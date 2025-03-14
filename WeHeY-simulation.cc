@@ -71,7 +71,8 @@ void ThroughputMonitor(Ptr<PacketSink> sink, double interval) {
 }
 
 int main(int argc, char *argv[]) {
-  double simulationTime = 10; // seconds
+  double simulationTime = 10;  // seconds
+  uint32_t payloadSize = 1448; // bytes
   uint32_t burst = 500000;
   uint32_t mtu = 0; // second bucket is disabled
   DataRate rate = DataRate("2Mbps");
@@ -127,28 +128,19 @@ int main(int argc, char *argv[]) {
   sinkApp.Start(Seconds(0.0));
   sinkApp.Stop(Seconds(simulationTime + 0.1));
 
-  uint32_t payloadSize = 1448;
   Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(payloadSize));
 
-  OnOffHelper onoff("ns3::TcpSocketFactory", Ipv4Address::GetAny());
-  onoff.SetAttribute("OnTime",
-                     StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-  onoff.SetAttribute("OffTime",
-                     StringValue("ns3::ConstantRandomVariable[Constant=0.2]"));
-  onoff.SetAttribute("PacketSize", UintegerValue(payloadSize));
-  onoff.SetAttribute("DataRate", StringValue("10Mb/s")); // bit/s
-  ApplicationContainer apps;
-
-  InetSocketAddress rmt(interfaces.GetAddress(0), port);
-  onoff.SetAttribute("Remote", AddressValue(rmt));
-  onoff.SetAttribute("Tos", UintegerValue(0xb8));
+  BulkSendHelper bulkSend("ns3::TcpSocketFactory",
+                          InetSocketAddress(interfaces.GetAddress(0), port));
+  bulkSend.SetAttribute("MaxBytes", UintegerValue(0));
+  bulkSend.SetAttribute("SendSize", UintegerValue(payloadSize));
 
   apps.Add(onoff.Install(nodes.Get(1)));
-  apps.Start(Seconds(1.0));
+  apps.Start(Seconds(0.0));
   apps.Stop(Seconds(simulationTime + 0.1));
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
-  double interval = 0.001; // Check throughput every 0.001 seconds
+  double interval = 0.1; // Check throughput every 0.001 seconds
   Simulator::Schedule(Seconds(interval), &ThroughputMonitor, sink, interval);
 
   double totalBytesReceived = sink->GetTotalRx(); // Get total received bytes
