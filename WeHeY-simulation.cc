@@ -102,13 +102,14 @@ int main(int argc, char *argv[]) {
   stack.Install(nodes);
 
   TrafficControlHelper tch;
-  tch.SetRootQueueDisc("ns3::TbfQueueDisc", "MaxSize", UintegerValue(1),
-                       "Burst", UintegerValue(burst), "Mtu", UintegerValue(mtu),
-                       "Rate", DataRateValue(DataRate(rate)), "PeakRate",
+  tch.SetRootQueueDisc("ns3::TbfQueueDisc", "Burst", UintegerValue(burst),
+                       "Mtu", UintegerValue(mtu), "Rate",
+                       DataRateValue(DataRate(rate)), "PeakRate",
                        DataRateValue(DataRate(peakRate)));
   QueueDiscContainer qdiscs = tch.Install(devices);
 
   Ptr<QueueDisc> q = qdiscs.Get(1);
+  q->SetMaxSize(ns3::QueueSize(ns3::QueueSizeUnit::PACKETS, 1));
   q->TraceConnectWithoutContext("TokensInFirstBucket",
                                 MakeCallback(&FirstBucketTokensTrace));
   q->TraceConnectWithoutContext("TokensInSecondBucket",
@@ -135,7 +136,7 @@ int main(int argc, char *argv[]) {
   bulkSend.SetAttribute("MaxBytes", UintegerValue(0));
   bulkSend.SetAttribute("SendSize", UintegerValue(payloadSize));
 
-  apps.Add(onoff.Install(nodes.Get(1)));
+  apps.Add(bulkSend.Install(nodes.Get(1)));
   apps.Start(Seconds(0.0));
   apps.Stop(Seconds(simulationTime + 0.1));
 
