@@ -51,6 +51,9 @@ static uint32_t sumRxBytes = 0;
 static double t_firstLoss = -1.0;
 static double t_lastLoss = -1.0;
 
+static uint16_t testPort = 7;
+static uint16_t backgroundPort = 8;
+
 static std::vector<uint32_t> sums;
 
 static void
@@ -65,8 +68,12 @@ Ipv4RxTrace (Ptr<const Packet> packet, Ptr<Ipv4> ipv4, uint32_t interface)
 {
   // Called whenever IP receives a packet (after it’s demuxed up from L2)
   g_ipRxCount++;
-  if(t_firstLoss > 0)
-    sumRxBytes += packet->GetSize();
+
+  TcpHeader tcpHeader;
+  if(packet->PeekHeader(tcpHeader) && tcpHeader.GetDestinationPort() == testPort){
+    if(t_firstLoss > 0)
+      sumRxBytes += packet->GetSize();
+  }
 }
 
 // void FirstBucketTokensTrace(uint32_t oldValue, uint32_t newValue) {
@@ -200,17 +207,14 @@ int main(int argc, char *argv[]) {
 
   // flow 1 on port1
 
-  uint16_t port1 = 7;
-  uint16_t port2 = 8;
-
-  Address localAddress1(InetSocketAddress(Ipv4Address::GetAny(), port1));
+  Address localAddress1(InetSocketAddress(Ipv4Address::GetAny(), testPort));
   PacketSinkHelper packetSinkHelper1("ns3::TcpSocketFactory", localAddress1);
   ApplicationContainer sinkApp1 = packetSinkHelper1.Install(nodes.Get(2));
   sinkApp1.Start(Seconds(0.0));
   sinkApp1.Stop(Seconds(simulationTime + 0.1));
 
   // flow 2 on port2
-  Address localAddress2(InetSocketAddress(Ipv4Address::GetAny(), port2));
+  Address localAddress2(InetSocketAddress(Ipv4Address::GetAny(), backgroundPort));
   PacketSinkHelper packetSinkHelper2("ns3::TcpSocketFactory", localAddress2);
   ApplicationContainer sinkApp2 = packetSinkHelper2.Install(nodes.Get(2));
   sinkApp2.Start(Seconds(0.0));
@@ -218,7 +222,7 @@ int main(int argc, char *argv[]) {
 
   // sender 1
   BulkSendHelper bulkSend("ns3::TcpSocketFactory",
-                          InetSocketAddress(ifaces2.GetAddress(1), port1));
+                          InetSocketAddress(ifaces2.GetAddress(1), testPort));
   bulkSend.SetAttribute("MaxBytes", UintegerValue(0));
   bulkSend.SetAttribute("SendSize", UintegerValue(payloadSize));
 
@@ -227,7 +231,7 @@ int main(int argc, char *argv[]) {
   apps.Stop(Seconds(simulationTime - 1)); // need to cover the whole apps duration
 
   // sender 2
-  BulkSendHelper bulkSend2("ns3::TcpSocketFactory", InetSocketAddress(ifaces2.GetAddress(1), port2));
+  BulkSendHelper bulkSend2("ns3::TcpSocketFactory", InetSocketAddress(ifaces2.GetAddress(1), backgroundPort));
   bulkSend2.SetAttribute("MaxBytes", UintegerValue(0));
   bulkSend2.SetAttribute("SendSize", UintegerValue(payloadSize));
 

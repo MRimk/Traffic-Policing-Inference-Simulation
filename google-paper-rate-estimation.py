@@ -100,8 +100,6 @@ real_lost_packets = get_lost_packets(DROPPED_PACKETS_NS3)
 pcap_df = utils.get_lossEvents_from_server_client_pcaps(SERVER_PCAP, CLIENT_PCAP, SERVER_PORT)
 # pcap_df = utils.generate_random_loss_df(num_packets=1000)
 
-#TODO: write a function to compare real_lost packets with the pcap df that i got
-
 compare_lost_with_real(pcap_df[pcap_df['is_lost']== True], real_lost_packets)
 
 print("pcap_df with loss events: ", pcap_df.shape)
