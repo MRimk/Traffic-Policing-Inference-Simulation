@@ -52,6 +52,9 @@ def get_policing_rate_delayed(df, p_first, p_last, delay):
             print("dropped: lost? ", row.is_lost, "\t time: ", row.timestamp)
             continue
         sum_delivered += row['pkt_len']
+        
+    print("total sum delivered: ", sum_delivered)
+
     return sum_delivered / time_between_loss
 
 def was_policing_happening(lost_list, passed_list, noise_loss=0.1, noise_passed=0.03):

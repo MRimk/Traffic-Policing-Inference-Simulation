@@ -204,14 +204,14 @@ def preprocess_df(df):
     df['is_retransmission'] = df['is_retransmission'].fillna(0)
     df = get_hashes(df)
     
-    df = df[df['length'] > 0]
+    df = df[df['tcp_length'] > 0] # so that we ignore SYN packets with 0 payload
     
     return df
 
 
 def get_lossEvents_from_server_client_pcaps(server_pcap, client_pcap, server_port):
     fields = {
-        'frame.time_relative': 'time', 'tcp.seq': 'seq', 'tcp.len': 'length',
+        'frame.time_relative': 'time', 'tcp.seq': 'seq', 'ip.len': 'length', 'tcp.len': 'tcp_length',
         'tcp.srcport': 'srcport', 'tcp.dstport': 'dstport',
         'tcp.analysis.out_of_order': 'is_out_of_order', 'tcp.analysis.retransmission': 'is_retransmission',
         'tcp.ack': 'ack'
