@@ -5,8 +5,8 @@ PCAP_FILE = '../../wehe-0-0.pcap'
 
 # SERVER_PCAP = '../../wehe-0-0.pcap'
 # CLIENT_PCAP = '../../wehe-1-0.pcap'
-SERVER_PCAP = '../../wehe_n0-n1-0-0.pcap'
-CLIENT_PCAP = '../../wehe_n1-n2-2-0.pcap'
+SERVER_PCAP = '../../wehe_complex_n0-n1-0-0.pcap'
+CLIENT_PCAP = '../../wehe_complex_n1-n2-2-0.pcap'
 
 DROPPED_PACKETS_NS3 = '../../wehe-dropped-packets.txt'
 
@@ -31,11 +31,14 @@ def get_policing_rate(df, p_first, p_last):
         df.iloc[p_first]['timestamp']
 
     sum_delivered = 0
+    counter = 0
     for i in range(p_first, p_last + 1):
         if not df.iloc[i]['is_lost']:
             sum_delivered += df.iloc[i]['pkt_len']
+            counter += 1
     
     print("total sum delivered: ", sum_delivered)
+    print("average received packet size: ", sum_delivered / counter)
     return sum_delivered / time_between_loss
 
 def get_policing_rate_delayed(df, p_first, p_last, delay):
