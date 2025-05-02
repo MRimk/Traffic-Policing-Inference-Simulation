@@ -16,8 +16,9 @@
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
 #include "ns3/point-to-point-module.h"
-#include "ns3/traffic-control-module.h"
 #include "ns3/tcp-header.h"
+#include "ns3/traffic-control-module.h"
+#include "utils.h"
 
 #include <fstream> // store throughput data
 #include <vector>
@@ -53,19 +54,17 @@ static double t_lastLoss = -1.0;
 
 static std::vector<uint32_t> sums;
 
-static void
-Ipv4TxTrace (Ptr<const Packet> packet, Ptr<Ipv4> ipv4, uint32_t interface)
-{
+static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
+                        uint32_t interface) {
   // Called whenever IP sends down a packet (before qdisc)
   g_ipTxCount++;
 }
 
-static void
-Ipv4RxTrace (Ptr<const Packet> packet, Ptr<Ipv4> ipv4, uint32_t interface)
-{
+static void Ipv4RxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
+                        uint32_t interface) {
   // Called whenever IP receives a packet (after it’s demuxed up from L2)
   g_ipRxCount++;
-  if(t_firstLoss > 0)
+  if (t_firstLoss > 0)
     sumRxBytes += packet->GetSize();
 }
 
@@ -79,23 +78,22 @@ Ipv4RxTrace (Ptr<const Packet> packet, Ptr<Ipv4> ipv4, uint32_t interface)
 //             << std::endl;
 // }
 
-
 std::ofstream droppedPacketsFile("wehe-dropped-packets.txt");
 
-void
-PacketDropCallback (Ptr<const QueueDiscItem> item)
-{
+void PacketDropCallback(Ptr<const QueueDiscItem> item) {
   double dropSeconds = Simulator::Now().GetSeconds();
 
-  if(t_firstLoss < 0)
+  if (t_firstLoss < 0)
     t_firstLoss = dropSeconds;
   t_lastLoss = dropSeconds;
-  sums.push_back(sumRxBytes); 
+  sums.push_back(sumRxBytes);
 
   TcpHeader tcpHeader;
   Ptr<const Packet> packet = item->GetPacket();
-  if(packet->PeekHeader(tcpHeader))
-    droppedPacketsFile << dropSeconds << "," << tcpHeader.GetSequenceNumber().GetValue() << "," << packet->GetSize() << std::endl;
+  if (packet->PeekHeader(tcpHeader))
+    droppedPacketsFile << dropSeconds << ","
+                       << tcpHeader.GetSequenceNumber().GetValue() << ","
+                       << packet->GetSize() << std::endl;
   else
     droppedPacketsFile << dropSeconds << ",," << packet->GetSize() << std::endl;
 }
@@ -119,12 +117,14 @@ PacketDropCallback (Ptr<const QueueDiscItem> item)
 // }
 
 int main(int argc, char *argv[]) {
-  double simulationTime = 11.1;  // seconds
-  uint32_t payloadSize = 1448; // bytes
+  double simulationTime = 11.1; // seconds
+  uint32_t payloadSize = 1448;  // bytes
   uint32_t burst = 500000;
   uint32_t mtu = 0; // second bucket is disabled
   DataRate rate = DataRate("2Mbps");
   DataRate peakRate = DataRate("0bps");
+
+  std::string queueSize = "100p";
 
   CommandLine cmd(__FILE__);
   cmd.AddValue("burst", "Size of first bucket in bytes", burst);
@@ -132,6 +132,10 @@ int main(int argc, char *argv[]) {
   cmd.AddValue("rate", "Rate of tokens arriving in first bucket", rate);
   cmd.AddValue("peakRate", "Rate of tokens arriving in second bucket",
                peakRate);
+  cmd.AddValue("queueSize",
+               "Amount of bytes or packets that can be stored in the bucket "
+               "instead of dropping the packet. Queue size in bytes or packets",
+               queueSize);
 
   cmd.Parse(argc, argv);
 
@@ -139,35 +143,50 @@ int main(int argc, char *argv[]) {
   nodes.Create(3);
 
   PointToPointHelper pointToPoint1;
-  pointToPoint1.SetDeviceAttribute("DataRate", StringValue("20Mb/s")); // link bandwidth
-  pointToPoint1.SetChannelAttribute("Delay", StringValue("0ms"));
+  pointToPoint1.SetDeviceAttribute("DataRate",
+                                   StringValue("20Mb/s")); // link bandwidth
+  pointToPoint1.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint2;
-  pointToPoint2.SetDeviceAttribute("DataRate", StringValue("20Mb/s")); // link bandwidth
-  pointToPoint2.SetChannelAttribute("Delay", StringValue("0ms"));
+  pointToPoint2.SetDeviceAttribute("DataRate",
+                                   StringValue("20Mb/s")); // link bandwidth
+  pointToPoint2.SetChannelAttribute("Delay", StringValue("5ms"));
 
-  NetDeviceContainer devices1 = pointToPoint1.Install(nodes.Get(0), nodes.Get(1));
-  NetDeviceContainer devices2 = pointToPoint2.Install(nodes.Get(1), nodes.Get(2));
+  NetDeviceContainer devices1 =
+      pointToPoint1.Install(nodes.Get(0), nodes.Get(1));
+  NetDeviceContainer devices2 =
+      pointToPoint2.Install(nodes.Get(1), nodes.Get(2));
 
   InternetStackHelper stack;
   stack.Install(nodes);
 
   TrafficControlHelper tch;
-  tch.SetRootQueueDisc("ns3::TbfQueueDisc",
-                       "MaxSize", QueueSizeValue(QueueSize("100p")),
-                       "Burst", UintegerValue(burst), "Mtu", UintegerValue(mtu),
-                       "Rate", DataRateValue(DataRate(rate)), "PeakRate",
-                       DataRateValue(DataRate(peakRate)));
+  tch.SetRootQueueDisc(
+      "ns3::TbfQueueDisc", "MaxSize",
+      QueueSizeValue(
+          QueueSize(queueSize)), // Try BDP or limiting layer rate delay product
+                                 // = Rate * RTT (change RTT to )
+      // Sweep entire space of 10% of BDP to 2 x BDP (approx 5 steps for each)
+      // BDP => applied BDP, which is the actual throttling rate because it is
+      // affected first do extreme values => very small Burst / Queue, or very
+      // large maybe look for paper that describes the applied rate limiting
+      // given the values of burst, rate, queue
+
+      // To get the actual rate of TBF - measure throughput after the TBF
+      "Burst", UintegerValue(burst), "Mtu", UintegerValue(mtu), "Rate",
+      DataRateValue(DataRate(rate)), "PeakRate",
+      DataRateValue(DataRate(peakRate)));
   QueueDiscContainer qdiscs = tch.Install(devices2.Get(0));
 
+  std::cout << qdiscs.Get(0)->GetMaxSize() << std::endl;
   Ptr<QueueDisc> q = qdiscs.Get(0);
-  q->SetMaxSize(ns3::QueueSize(ns3::QueueSizeUnit::PACKETS,100));
+  // q->SetMaxSize(ns3::QueueSize(ns3::QueueSizeUnit::PACKETS, 100));
   // q->TraceConnectWithoutContext("TokensInFirstBucket",
   //                               MakeCallback(&FirstBucketTokensTrace));
   // q->TraceConnectWithoutContext("TokensInSecondBucket",
   //                               MakeCallback(&SecondBucketTokensTrace));
   q->TraceConnectWithoutContext("Drop", MakeCallback(&PacketDropCallback));
-  
+
   // Assign IP addresses:
   //   10.1.1.x on n0 <-> n1
   //   10.1.2.x on n1 <-> n2
@@ -175,19 +194,18 @@ int main(int argc, char *argv[]) {
   address1.SetBase("10.1.1.0", "255.255.255.0");
   address2.SetBase("10.1.2.0", "255.255.255.0");
 
-  Ipv4InterfaceContainer ifaces1 = address1.Assign (devices1);
-  Ipv4InterfaceContainer ifaces2 = address2.Assign (devices2);
+  Ipv4InterfaceContainer ifaces1 = address1.Assign(devices1);
+  Ipv4InterfaceContainer ifaces2 = address2.Assign(devices2);
 
   Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
   Ptr<Ipv4> ipv4_sender = nodes.Get(1)->GetObject<Ipv4>();
   Ptr<Ipv4> ipv4_dest = nodes.Get(2)->GetObject<Ipv4>();
   // “Tx” will fire when IP sends a packet down to the traffic-control layer
-  ipv4_sender->TraceConnectWithoutContext ("Tx", MakeCallback (&Ipv4TxTrace));
+  ipv4_sender->TraceConnectWithoutContext("Tx", MakeCallback(&Ipv4TxTrace));
 
   // “Rx” will fire when IP receives a packet from the traffic-control layer
-  ipv4_dest->TraceConnectWithoutContext ("Rx", MakeCallback (&Ipv4RxTrace));
-
+  ipv4_dest->TraceConnectWithoutContext("Rx", MakeCallback(&Ipv4RxTrace));
 
   // Flow
   uint16_t port = 7;
@@ -207,37 +225,33 @@ int main(int argc, char *argv[]) {
 
   ApplicationContainer apps = bulkSend.Install(nodes.Get(0));
   apps.Start(Seconds(0.1));
-  apps.Stop(Seconds(simulationTime - 1)); // need to cover the whole apps duration
+  apps.Stop(
+      Seconds(simulationTime - 1)); // need to cover the whole apps duration
   // TODO: ns3 identifier, when packet is lost, I can save the packet to a file
-  // compute hash of data that uniquely identify the packet and match digest with the src ip, port, dest port, ip, sequence num
-  // check if the payloads are different -- it's not different, as they are all 0's
-  // add the middle node for the queueing -- DONE.
-  // implement the google paper in ns3
+  // compute hash of data that uniquely identify the packet and match digest
+  // with the src ip, port, dest port, ip, sequence num check if the payloads
+  // are different -- it's not different, as they are all 0's add the middle
+  // node for the queueing -- DONE. implement the google paper in ns3
 
-
-  // Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
-  // double interval = 0.1; // Check throughput every 0.001 seconds
-  // Simulator::Schedule(Seconds(interval), &ThroughputMonitor, sink, interval);
-
-  // double totalBytesReceived = sink->GetTotalRx(); // Get total received bytes
-  // double throughput =
-  //     (totalBytesReceived * 8) / simulationTime; // Convert to bits per second
-
-  // std::cout << std::endl << "*** Throughput Statistics ***" << std::endl;
-  // std::cout << "Total Bytes Received: " << totalBytesReceived << " bytes"
-  //           << std::endl;
-  // std::cout << "Throughput: " << throughput / 1e6 << " Mbps" << std::endl;
-  
-  AsciiTraceHelper ascii;
-  pointToPoint1.EnableAsciiAll (ascii.CreateFileStream ("wehe_sim_shaping_n0-n1.tr"));
-  pointToPoint2.EnableAsciiAll (ascii.CreateFileStream ("wehe_sim_shaping_n1-n2.tr"));
-  pointToPoint1.EnablePcapAll ("wehe_shaping_n0-n1");
-  pointToPoint2.EnablePcapAll ("wehe_shaping_n1-n2");
+  std::vector<std::string> args;
+  args.push_back(std::to_string(burst));
+  args.push_back(queueSize);
+  assignFiles(pointToPoint1, pointToPoint2, "shaping", args);
 
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
-
   Simulator::Destroy();
+
+  Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
+
+  double totalBytesReceived = sink->GetTotalRx(); // Get total received bytes
+  double throughput =
+      (totalBytesReceived * 8) / simulationTime; // Convert to bits per second
+
+  std::cout << std::endl << "*** Throughput Statistics ***" << std::endl;
+  std::cout << "Total Bytes Received: " << totalBytesReceived << " bytes"
+            << std::endl;
+  std::cout << "Throughput: " << throughput / 1e6 << " Mbps" << std::endl;
 
   // throughputFile.close();
   droppedPacketsFile.close();
@@ -245,15 +259,23 @@ int main(int argc, char *argv[]) {
   std::cout << std::endl << "*** TC Layer statistics ***" << std::endl;
   std::cout << q->GetStats() << std::endl;
 
-  std::cout << "IP-layer Tx Count (before queue disc): " << g_ipTxCount << std::endl;
-  std::cout << "IP-layer Rx Count (after queue disc):  " << g_ipRxCount << std::endl;
+  std::cout << "IP-layer Tx Count (before queue disc): " << g_ipTxCount
+            << std::endl;
+  std::cout << "IP-layer Rx Count (after queue disc):  " << g_ipRxCount
+            << std::endl;
 
-  if (sums.size() > 0){
+  if (!sums.empty()) {
     std::cout << std::endl << "*** Google paper estimation ***" << std::endl;
-    std::cout << "Time between first and last loss: " << t_lastLoss - t_firstLoss << std::endl;
+    std::cout << "Time between first and last loss: "
+              << t_lastLoss - t_firstLoss << std::endl;
     std::cout << "The number of sums: " << sums.size() << std::endl;
-    std::cout << "Bytes received in between first and last loss: " << sums[sums.size() - 1] << std::endl;
-    std::cout << "Estimated goodput: " << sums[sums.size() - 1] / (t_lastLoss - t_firstLoss)  << " B/s\t -> " <<  sums[sums.size() - 1] / (t_lastLoss - t_firstLoss) * 8 << " b/s" << std::endl;
+    std::cout << "Bytes received in between first and last loss: "
+              << sums[sums.size() - 1] << std::endl;
+    std::cout << "Estimated goodput: "
+              << sums[sums.size() - 1] / (t_lastLoss - t_firstLoss)
+              << " B/s\t -> "
+              << sums[sums.size() - 1] / (t_lastLoss - t_firstLoss) * 8
+              << " b/s" << std::endl;
   }
   return 0;
 }

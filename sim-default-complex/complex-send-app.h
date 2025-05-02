@@ -5,6 +5,7 @@
 #include "ns3/random-variable-stream.h"
 #include "ns3/traced-callback.h"
 
+
 namespace ns3 {
 
 class Address;
@@ -42,6 +43,7 @@ private:
   uint32_t m_maxPacket;
   TypeId m_tid;
   Ptr<UniformRandomVariable> m_sizeVar;
+  uint32_t m_seq{0};          //!< Sequence
 
   TracedCallback<Ptr<const Packet>> m_txTrace;
 

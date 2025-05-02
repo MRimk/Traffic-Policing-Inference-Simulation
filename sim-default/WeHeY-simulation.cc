@@ -18,6 +18,7 @@
 #include "ns3/point-to-point-module.h"
 #include "ns3/traffic-control-module.h"
 #include "ns3/tcp-header.h"
+#include "utils.h"
 
 #include <fstream> // store throughput data
 #include <vector>
@@ -228,11 +229,15 @@ int main(int argc, char *argv[]) {
   //           << std::endl;
   // std::cout << "Throughput: " << throughput / 1e6 << " Mbps" << std::endl;
   
-  AsciiTraceHelper ascii;
-  pointToPoint1.EnableAsciiAll (ascii.CreateFileStream ("wehe_sim_n0-n1.tr"));
-  pointToPoint2.EnableAsciiAll (ascii.CreateFileStream ("wehe_sim_n1-n2.tr"));
-  pointToPoint1.EnablePcapAll ("wehe_n0-n1");
-  pointToPoint2.EnablePcapAll ("wehe_n1-n2");
+  // AsciiTraceHelper ascii;
+  // pointToPoint1.EnableAsciiAll (ascii.CreateFileStream ("wehe_sim_n0-n1.tr"));
+  // pointToPoint2.EnableAsciiAll (ascii.CreateFileStream ("wehe_sim_n1-n2.tr"));
+  // pointToPoint1.EnablePcapAll ("wehe_n0-n1");
+  // pointToPoint2.EnablePcapAll ("wehe_n1-n2");
+  std::vector<std::string> args;
+  // args.push_back(std::to_string(burst));
+  // args.push_back(queueSize);
+  assignFiles(pointToPoint1, pointToPoint2, "default", args);
 
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();

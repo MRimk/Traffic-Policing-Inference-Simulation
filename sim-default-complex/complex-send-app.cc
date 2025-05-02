@@ -1,5 +1,8 @@
 #include "complex-send-app.h"
 #include "ns3/address.h"
+#include "ns3/applications-module.h"
+#include "ns3/core-module.h"
+#include "ns3/internet-module.h"
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/nstime.h"
@@ -95,6 +98,8 @@ void ComplexSendApplication::StartApplication(
     } else if (InetSocketAddress::IsMatchingType(m_peer)) {
       m_socket->Bind();
     }
+    // m_socket->SetAttribute("SegmentSize", UintegerValue(m_maxPacket));
+    // m_socket->SetAttribute("TcpNoDelay", BooleanValue(true));
 
     m_sizeVar = CreateObject<UniformRandomVariable>();
 
@@ -128,35 +133,77 @@ void ComplexSendApplication::StopApplication(
 // Private helpers
 
 void ComplexSendApplication::SendData(void) {
-  while (m_maxBytes == 0 || m_totBytes < m_maxBytes) { // Time to send more
-    uint32_t toSend = (m_maxPacket > 0)
-                          ? m_sizeVar->GetInteger(m_minPacket, m_maxPacket)
-                          : m_sendSize;
-    // Make sure we don't send too many
+  // while (m_maxBytes == 0 || m_totBytes < m_maxBytes) { // Time to send more
+  //   uint32_t toSend = (m_maxPacket > 0)
+  //                         ? m_sizeVar->GetInteger(m_minPacket, m_maxPacket)
+  //                         : m_sendSize;
+  //   // Make sure we don't send too many
+  //   if (m_maxBytes > 0) {
+  //     toSend = (m_maxPacket > 0)
+  //                  ? std::min(m_sizeVar->GetInteger(m_minPacket,
+  //                  m_maxPacket),
+  //                             m_maxBytes - m_totBytes)
+  //                  : std::min(m_sendSize, m_maxBytes - m_totBytes);
+  //   }
+  //   // std::cout << "sending packet at " << Simulator::Now() << std::endl;
+  //   Ptr<Packet> packet = Create<Packet>(toSend);
+
+  //   SeqTsHeader seqTs;
+  //   seqTs.SetSeq(m_seq++);
+  //   toSend =
+  //       toSend > (8 + 4)
+  //           ? toSend - (8 + 4)
+  //           : toSend; // 8+4 : the size of the seqTs header
+  //   if (toSend > (8 + 4)) {
+  //     packet->AddHeader(seqTs);
+  //   }
+
+  //   m_txTrace(packet);
+  //   int actual = m_socket->Send(packet);
+  //   if (actual > 0) {
+  //     m_totBytes += actual;
+  //   }
+
+  //   // We exit this loop when actual < toSend as the send side
+  //   // buffer is full. The "DataSent" callback will pop when
+  //   // some buffer space has freed ip.
+  //   if ((unsigned)actual != toSend) {
+  //     break;
+  //   }
+  // }
+  // // Check if time to close (all sent)
+  // if (m_totBytes == m_maxBytes && m_connected) {
+  //   m_socket->Close();
+  //   m_connected = false;
+  // }
+
+  while ((m_maxBytes == 0 || m_totBytes < m_maxBytes) && m_connected) {
+    // pick random payload size
+    uint32_t payload =
+        (m_maxPacket > 0 ? m_sizeVar->GetInteger(m_minPacket, m_maxPacket)
+                         : m_sendSize);
     if (m_maxBytes > 0) {
-      toSend = (m_maxPacket > 0)
-                   ? std::min(m_sizeVar->GetInteger(m_minPacket, m_maxPacket),
-                              m_maxBytes - m_totBytes)
-                   : std::min(m_sendSize, m_maxBytes - m_totBytes);
+      payload = std::min(payload, m_maxBytes - m_totBytes);
     }
-    // std::cout << "sending packet at " << Simulator::Now() << std::endl;
-    Ptr<Packet> packet = Create<Packet>(toSend);
-    // std::cout << "packet size " << packet->GetSize() << std::endl;
+
+    // build packet and add your SeqTsHeader
+    Ptr<Packet> packet = Create<Packet>(payload);
+    SeqTsHeader seqTs;
+    seqTs.SetSeq(m_seq++);
+    packet->AddHeader(seqTs);
     m_txTrace(packet);
+
     int actual = m_socket->Send(packet);
     if (actual > 0) {
       m_totBytes += actual;
     }
-
-    // We exit this loop when actual < toSend as the send side
-    // buffer is full. The "DataSent" callback will pop when
-    // some buffer space has freed ip.
-    if ((unsigned)actual != toSend) {
+    // exit if TCP send buffer is full
+    if ((uint32_t)actual != packet->GetSize()) {
       break;
     }
   }
-  // Check if time to close (all sent)
-  if (m_totBytes == m_maxBytes && m_connected) {
+
+  if (m_maxBytes > 0 && m_totBytes >= m_maxBytes) {
     m_socket->Close();
     m_connected = false;
   }

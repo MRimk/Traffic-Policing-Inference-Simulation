@@ -19,6 +19,8 @@
 #include "ns3/random-variable-stream.h"
 #include "ns3/tcp-header.h"
 #include "ns3/traffic-control-module.h"
+#include "complex-send-app.h"
+#include "utils.h"
 
 #include <fstream> // store throughput data
 #include <vector>
@@ -217,13 +219,19 @@ int main(int argc, char *argv[]) {
   // sizeVar,
   //                     simEnd);
 
-  AsciiTraceHelper ascii;
-  pointToPoint1.EnableAsciiAll(
-      ascii.CreateFileStream("wehe_sim_complex_n0-n1.tr"));
-  pointToPoint2.EnableAsciiAll(
-      ascii.CreateFileStream("wehe_sim_complex_n1-n2.tr"));
-  pointToPoint1.EnablePcapAll("wehe_complex_n0-n1");
-  pointToPoint2.EnablePcapAll("wehe_complex_n1-n2");
+  // AsciiTraceHelper ascii;
+  // pointToPoint1.EnableAsciiAll(
+  //     ascii.CreateFileStream("wehe_sim_complex_n0-n1.tr"));
+  // pointToPoint2.EnableAsciiAll(
+  //     ascii.CreateFileStream("wehe_sim_complex_n1-n2.tr"));
+  // pointToPoint1.EnablePcapAll("wehe_complex_n0-n1");
+  // pointToPoint2.EnablePcapAll("wehe_complex_n1-n2");
+
+  std::vector<std::string> args;
+  // args.push_back(std::to_string(burst));
+  // args.push_back(queueSize);
+  assignFiles(pointToPoint1, pointToPoint2, "complex", args);
+
 
   Simulator::Stop(Seconds(simulationTime));
   Simulator::Run();
