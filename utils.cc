@@ -24,11 +24,11 @@ void assignFiles(PointToPointHelper pp1, PointToPointHelper pp2,
   traceFileNameStream.str(""); // reset buffer
   traceFileNameStream.clear();
 
-  traceFileNameStream << traceFileNameBase << "_" << name << "_";
+  traceFileNameStream << traceFileNameBase << name << "_";
   for (auto &arg : args) {
     traceFileNameStream << arg << "_";
   }
-  
+
   traceFileNameStream << clientSide;
   std::string pcapClientSide = traceFileNameStream.str();
   traceFileNameStream << ".tr";
@@ -38,4 +38,22 @@ void assignFiles(PointToPointHelper pp1, PointToPointHelper pp2,
   pp2.EnableAsciiAll(ascii.CreateFileStream(traceFileClient));
   pp1.EnablePcapAll(pcapServerSide);
   pp2.EnablePcapAll(pcapClientSide);
+}
+
+std::string getFilename(std::string fileContent, std::string simName,
+                        std::vector<std::string> &args) {
+  std::string fileNameBase =
+      "scratch/Traffic-Policing-Inference-Simulation/data/wehe_";
+  std::ostringstream fileNameStream;
+
+  fileNameStream << fileNameBase << fileContent << "_" << simName << "_";
+  for (auto &arg : args) {
+    fileNameStream << arg << "_";
+  }
+  return fileNameStream.str();
+}
+
+std::string getMetadataFileName(std::string simName,
+                                std::vector<std::string> &args) {
+  return getFilename("metadata", simName, args);
 }

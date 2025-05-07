@@ -1,5 +1,7 @@
 import utils
 import pandas as pd
+import os
+import math
 
 PCAP_FILE = '../../wehe-0-0.pcap'
 
@@ -7,6 +9,15 @@ PCAP_FILE = '../../wehe-0-0.pcap'
 # CLIENT_PCAP = '../../wehe-1-0.pcap'
 SERVER_PCAP = '../../wehe_complex_n0-n1-0-0.pcap'
 CLIENT_PCAP = '../../wehe_complex_n1-n2-2-0.pcap'
+
+
+SERVER_IDENTIFIER = 'n0-n1-0-0.pcap'
+CLIENT_IDENTIFIER = 'n1-n2-2-0.pcap'
+
+METADATA_FILE = 'metadata'
+SIM_FILE = 'sim'
+
+DATA = "data/"
 
 DROPPED_PACKETS_NS3 = '../../wehe-dropped-packets.txt'
 
@@ -19,6 +30,28 @@ print(PROPAGATION_DELAY)
 SERVER_PORT = 49153
 
 
+class ExperimentRun:
+    def __init__(self, name, server_pcap, client_pcap, metadata_file, params):
+        self.name = name
+        self.server_pcap = server_pcap
+        self.client_pcap = client_pcap
+        self.metadata_file = metadata_file
+        self.params = params
+        self.metadata = self.get_metadata_info()
+
+    def get_pcap_df(self):
+        return utils.get_lossEvents_from_server_client_pcaps(
+            self.server_pcap, self.client_pcap, SERVER_PORT)
+        
+    def get_metadata_info(self):
+       with open(self.metadata_file, 'r') as f:
+            lines = f.readlines()
+            metadata = [float(lines[0]), int(lines[1])]
+            return metadata
+    
+    def __repr__(self):
+        return f"ExperimentRun(name={self.name}, server_pcap={self.server_pcap}, client_pcap={self.client_pcap}, metadata_file={self.metadata_file}, params={self.params})"
+    
 def get_first_and_last_loss_index(df):
     lost_indices = df[df['is_lost'] == True].index
     if lost_indices.empty:
@@ -38,7 +71,7 @@ def get_policing_rate(df, p_first, p_last):
             counter += 1
     
     print("total sum delivered: ", sum_delivered)
-    print("average received packet size: ", sum_delivered / counter)
+    # print("average received packet size: ", sum_delivered / counter)
     return sum_delivered / time_between_loss
 
 def get_policing_rate_delayed(df, p_first, p_last, delay):
@@ -97,6 +130,100 @@ def compare_lost_with_real(df_new, df_real):
     # print("real head:", df_real.head())
     # print("how many don't match: ", df_new[df_new['matches'] == False].shape)
 
+def get_experiment_runs(exp_name):
+    files = [f for f in os.listdir(DATA) if os.path.isfile(os.path.join(DATA, f))]
+    runs = []
+    # index = 0
+    for file in files:
+        file_parts = file.split('_')
+        if (not exp_name in file_parts) or (not METADATA_FILE in file_parts):
+            continue
+        file_parts = [part for part in file_parts if part]
+        file_params = file_parts[3:]
+        name = str.join('_',file_params)
+        sim_file_start = os.path.join(DATA, file.replace(METADATA_FILE, SIM_FILE))
+        server_pcap = "".join([sim_file_start, SERVER_IDENTIFIER])
+        client_pcap = "".join([sim_file_start, CLIENT_IDENTIFIER])
+        # server_pcap = os.path.join(DATA, server_pcap_name)
+        # client_pcap = os.path.join(DATA, client_pcap_name)
+        
+        run = ExperimentRun(
+            name=name,
+            server_pcap=server_pcap,
+            client_pcap=client_pcap,
+            metadata_file=os.path.join(DATA, file),
+            params=file_params
+        )
+        runs.append(run)
+        # index += 1 
+        # if index == 2:
+        #     break
+    return runs
+
+def is_correct_num_lost(df, expected_lost):
+    return abs(df[df['is_lost']== True].shape[0] - expected_lost) / expected_lost
+
+def is_correct_rate(rate, expected_rate):
+    return abs(rate - expected_rate) / expected_rate
+
+def analyse_run(run):
+    pcap_df = run.get_pcap_df()
+    num_lost = pcap_df[pcap_df['is_lost']== True].shape[0]
+    
+    if num_lost == 0 or run.metadata[1] == 0:
+        # print("No lost packets detected.")
+        return {"burst": run.params[0], "queue_size": run.params[1], "rate": 0, "lost": num_lost, "error_lost": 0, "error_rate": 0}
+ 
+    error_lost = is_correct_num_lost(pcap_df, run.metadata[1]) 
+    
+    p_first, p_last = get_first_and_last_loss_index(pcap_df)
+    rate = get_policing_rate(pcap_df, p_first, p_last)
+    
+    if run.metadata[0] == 0:
+        error_rate = math.inf
+    else:
+        error_rate = is_correct_rate(rate, run.metadata[0])
+        
+        
+    return {"burst": run.params[0], "queue_size": run.params[1], "rate": rate, "lost": num_lost, "error_lost": error_lost, "error_rate": error_rate}
+    
+
+def results_analysis(results):
+    sum_rate_error = 0
+    sum_lost_error = 0
+    counter_rate = 0
+    counter_lost = 0
+    for result in results:
+        sum_rate_error += result['error_rate'] if result['rate'] != 0 else 0
+        counter_rate += 1 if result['rate'] != 0 else 0
+        sum_lost_error += result['error_lost'] if result['lost'] != 0 else 0
+        counter_lost += 1 if result['lost'] != 0 else 0
+    avg_rate_error = sum_rate_error / counter_rate if counter_rate != 0 else 0
+    avg_lost_error = sum_lost_error / counter_lost if counter_lost != 0 else 0
+    print(f"Average rate error: {avg_rate_error}")
+    print(f"Average lost error: {avg_lost_error}")
+
+def save_results(results, exp_name):
+    df = pd.DataFrame(results)
+    df.to_csv(f"{DATA}results_{exp_name}.csv", index=False)
+    print(f"Results saved to results_{exp_name}.csv")
+
+def experiment_analysis(exp_name): 
+    runs = get_experiment_runs(exp_name)
+    results = []
+    index = 1
+    for run in runs:
+        print(f"run {index}/{len(runs)}")
+        estimation = analyse_run(run)
+        results.append(estimation)
+
+        index += 1
+        # print(f"Run: {run.name}, Policing Rate: {estimation['rate']}, Lost Packets: {estimation['lost']}, Error in Lost Packets: {estimation['error_lost']}, Error in Policing Rate: {estimation['error_rate']}")
+    results_analysis(results)
+    save_results(results, exp_name)
+    
+experiment_analysis('shaping')
+exit(0)
 
 real_lost_packets = get_lost_packets(DROPPED_PACKETS_NS3)
 

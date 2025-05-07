@@ -216,13 +216,13 @@ int main(int argc, char *argv[]) {
   // implement the google paper in ns3
 
 
-  // Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
+  Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
   // double interval = 0.1; // Check throughput every 0.001 seconds
   // Simulator::Schedule(Seconds(interval), &ThroughputMonitor, sink, interval);
 
-  // double totalBytesReceived = sink->GetTotalRx(); // Get total received bytes
-  // double throughput =
-  //     (totalBytesReceived * 8) / simulationTime; // Convert to bits per second
+  double totalBytesReceived = sink->GetTotalRx(); // Get total received bytes
+  double throughput =
+      (totalBytesReceived * 8) / simulationTime; // Convert to bits per second
 
   // std::cout << std::endl << "*** Throughput Statistics ***" << std::endl;
   // std::cout << "Total Bytes Received: " << totalBytesReceived << " bytes"
@@ -246,7 +246,12 @@ int main(int argc, char *argv[]) {
 
   // throughputFile.close();
   droppedPacketsFile.close();
-
+  
+  std::ofstream metadata(getMetadataFileName("shaping", args));
+  metadata << throughput << std::endl;  // Log throughput in bps
+  metadata << sums.size() << std::endl; // Log number of dropped packets
+  metadata.close();
+  
   std::cout << std::endl << "*** TC Layer statistics ***" << std::endl;
   std::cout << q->GetStats() << std::endl;
 

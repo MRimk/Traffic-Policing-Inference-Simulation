@@ -30,6 +30,7 @@
 //
 //       10.1.1.0
 // n0 ------n_TBF----- n1
+//      5ms        5ms    
 //    point-to-point
 //
 // The output will consist of all the traced changes in
@@ -238,11 +239,13 @@ int main(int argc, char *argv[]) {
   args.push_back(queueSize);
   assignFiles(pointToPoint1, pointToPoint2, "shaping", args);
 
+  
+  Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
+
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
   Simulator::Destroy();
 
-  Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 
   double totalBytesReceived = sink->GetTotalRx(); // Get total received bytes
   double throughput =
@@ -263,6 +266,11 @@ int main(int argc, char *argv[]) {
             << std::endl;
   std::cout << "IP-layer Rx Count (after queue disc):  " << g_ipRxCount
             << std::endl;
+
+  std::ofstream metadata(getMetadataFileName("shaping", args));
+  metadata << throughput << std::endl;  // Log throughput in bps
+  metadata << sums.size() << std::endl; // Log number of dropped packets
+  metadata.close();
 
   if (!sums.empty()) {
     std::cout << std::endl << "*** Google paper estimation ***" << std::endl;

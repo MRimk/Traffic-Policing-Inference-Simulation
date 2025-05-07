@@ -25,9 +25,14 @@ def run_shaping_exp():
     bdp = outRate * rtt / 8 # 2Mbps * 20ms / 8b = 5000B
     queueAddition = "B"
     
-    bursts = [1500, 500000] # approx 1 packet and 500 packets
+    onePacket = 1500 # 1500B
+    burstFactors = [0.5, 1, 5, 25, 100]
+    bursts = []
+    for factor in burstFactors:
+        print(f"computed burst size: {factor * onePacket}B")
+        bursts.append(f"{factor * onePacket}B")
     
-    queueFactors = [0.1, 2]
+    queueFactors = [0.1, 0.5, 1, 1.5, 2, 10, 50, 100]
     queueSizes = []
     for factor in queueFactors:
         print(f"computed queue size: {factor * bdp}{queueAddition}")
