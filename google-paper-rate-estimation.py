@@ -48,6 +48,28 @@ class ExperimentRun:
             lines = f.readlines()
             metadata = [float(lines[0]), int(lines[1])]
             return metadata
+        
+    def get_client_rx_throughput(self):
+        fields = {
+            'frame.time_relative': 'time', 'tcp.seq': 'seq', 'ip.len': 'length', 'tcp.len': 'tcp_length',
+            'tcp.srcport': 'srcport', 'tcp.dstport': 'dstport',
+            'tcp.analysis.out_of_order': 'is_out_of_order', 'tcp.analysis.retransmission': 'is_retransmission',
+            'tcp.ack': 'ack'
+        }
+        
+        pkt_filter = "tcp.srcport=={}".format(SERVER_PORT)
+
+        client_df = utils.pcap_to_df(self.client_pcap, fields.keys(), pkt_filter=pkt_filter).rename(columns=fields)
+        # client_df = preprocess_df(client_df)
+        
+        if client_df.empty:
+            return 0
+        data_rx = client_df['length'].sum() # ip.len
+        first_packet_time = client_df['time'].iloc[0]
+        last_packet_time = client_df['time'].iloc[-1]
+        elapsed_time = last_packet_time - first_packet_time
+        throughput = data_rx / elapsed_time * 8 # convert to bps
+        return throughput
     
     def __repr__(self):
         return f"ExperimentRun(name={self.name}, server_pcap={self.server_pcap}, client_pcap={self.client_pcap}, metadata_file={self.metadata_file}, params={self.params})"
@@ -72,7 +94,7 @@ def get_policing_rate(df, p_first, p_last):
     
     print("total sum delivered: ", sum_delivered)
     # print("average received packet size: ", sum_delivered / counter)
-    return sum_delivered / time_between_loss
+    return sum_delivered / time_between_loss * 8 # convert to bps
 
 def get_policing_rate_delayed(df, p_first, p_last, delay):
     t_loss_start = df.iloc[p_first]['timestamp'] + delay
@@ -130,10 +152,10 @@ def compare_lost_with_real(df_new, df_real):
     # print("real head:", df_real.head())
     # print("how many don't match: ", df_new[df_new['matches'] == False].shape)
 
+
 def get_experiment_runs(exp_name):
     files = [f for f in os.listdir(DATA) if os.path.isfile(os.path.join(DATA, f))]
     runs = []
-    # index = 0
     for file in files:
         file_parts = file.split('_')
         if (not exp_name in file_parts) or (not METADATA_FILE in file_parts):
@@ -155,37 +177,42 @@ def get_experiment_runs(exp_name):
             params=file_params
         )
         runs.append(run)
-        # index += 1 
-        # if index == 2:
-        #     break
     return runs
 
 def is_correct_num_lost(df, expected_lost):
-    return abs(df[df['is_lost']== True].shape[0] - expected_lost) / expected_lost
+    return (( df[df['is_lost']== True].shape[0] - expected_lost) / expected_lost, (df[df['is_lost']== True].shape[0] - expected_lost) / expected_lost)
 
 def is_correct_rate(rate, expected_rate):
-    return abs(rate - expected_rate) / expected_rate
+    return ((rate - expected_rate) / expected_rate, abs(rate - expected_rate) / expected_rate)
 
 def analyse_run(run):
     pcap_df = run.get_pcap_df()
+    throughput = run.get_client_rx_throughput()
+    print(f"Throughput at rx: {throughput}")
     num_lost = pcap_df[pcap_df['is_lost']== True].shape[0]
     
-    if num_lost == 0 or run.metadata[1] == 0:
-        # print("No lost packets detected.")
-        return {"burst": run.params[0], "queue_size": run.params[1], "rate": 0, "lost": num_lost, "error_lost": 0, "error_rate": 0}
+    if num_lost > 0 and run.metadata[1] == 0:
+        print(f"FALSE POSITIVE: Lost packets detected ({num_lost})but no expected lost packets.")
+    
+    if num_lost < 15 or run.metadata[1] == 0:
+        return {"burst": run.params[0], "queue_size": run.params[1], "rate": 0, "lost": num_lost, "error_lost": 0, "error_lost_abs": 0, "error_rate": 1, "error_rate_abs": 1, "actual_rate": run.metadata[0], "rx_rate": throughput}
  
-    error_lost = is_correct_num_lost(pcap_df, run.metadata[1]) 
+    error_lost, error_lost_abs = is_correct_num_lost(pcap_df, run.metadata[1]) 
     
     p_first, p_last = get_first_and_last_loss_index(pcap_df)
     rate = get_policing_rate(pcap_df, p_first, p_last)
     
-    if run.metadata[0] == 0:
-        error_rate = math.inf
+    if throughput == 0:
+        error_rate = 1
+        error_rate_abs = 1
     else:
-        error_rate = is_correct_rate(rate, run.metadata[0])
+        error_rate, error_rate_abs = is_correct_rate(rate, throughput)
+        if abs(rate - run.metadata[0]) > 0:
+            print(f"Rate error: {error_rate}, Rate: {rate}, Expected rate: {throughput}")
+    
+    
         
-        
-    return {"burst": run.params[0], "queue_size": run.params[1], "rate": rate, "lost": num_lost, "error_lost": error_lost, "error_rate": error_rate}
+    return {"burst": run.params[0], "queue_size": run.params[1], "rate": rate, "lost": num_lost, "error_lost": error_lost, "error_lost_abs": error_lost_abs, "error_rate": error_rate, "error_rate_abs": error_rate_abs,"actual_rate": run.metadata[0], "rx_rate": throughput}
     
 
 def results_analysis(results):
@@ -213,7 +240,9 @@ def experiment_analysis(exp_name):
     results = []
     index = 1
     for run in runs:
-        print(f"run {index}/{len(runs)}")
+        print(f"run {index}/{len(runs)} : {run.name}")
+        if 'p' in run.name:
+            continue
         estimation = analyse_run(run)
         results.append(estimation)
 

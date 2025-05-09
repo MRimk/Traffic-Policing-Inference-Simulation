@@ -30,7 +30,7 @@
 //
 //       10.1.1.0
 // n0 ------n_TBF----- n1
-//      5ms        5ms    
+//      5ms        5ms
 //    point-to-point
 //
 // The output will consist of all the traced changes in
@@ -48,6 +48,7 @@ NS_LOG_COMPONENT_DEFINE("TbfExample");
 
 static uint32_t g_ipTxCount = 0;
 static uint32_t g_ipRxCount = 0;
+static uint32_t g_ipRxTotal = 0;
 
 static uint32_t sumRxBytes = 0;
 static double t_firstLoss = -1.0;
@@ -64,7 +65,9 @@ static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
 static void Ipv4RxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
                         uint32_t interface) {
   // Called whenever IP receives a packet (after it’s demuxed up from L2)
+  // std::cout << "received: " << packet->GetSize() << std::endl;
   g_ipRxCount++;
+  g_ipRxTotal += packet->GetSize();
   if (t_firstLoss > 0)
     sumRxBytes += packet->GetSize();
 }
@@ -239,15 +242,13 @@ int main(int argc, char *argv[]) {
   args.push_back(queueSize);
   assignFiles(pointToPoint1, pointToPoint2, "shaping", args);
 
-  
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
   Simulator::Destroy();
 
-
-  double totalBytesReceived = sink->GetTotalRx(); // Get total received bytes
+  double totalBytesReceived = g_ipRxTotal; // Get total received bytes
   double throughput =
       (totalBytesReceived * 8) / simulationTime; // Convert to bits per second
 
