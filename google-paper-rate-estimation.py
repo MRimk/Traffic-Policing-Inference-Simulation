@@ -17,6 +17,10 @@ CLIENT_IDENTIFIER = 'n1-n2-2-0.pcap'
 METADATA_FILE = 'metadata'
 SIM_FILE = 'sim'
 
+EXP_SHAPING = 'shaping'
+EXP_SHAPING_COMPLEX = 'complex-shaping'
+EXP_XTOPO = 'xtopo'
+
 DATA = "data/"
 
 DROPPED_PACKETS_NS3 = '../../wehe-dropped-packets.txt'
@@ -236,6 +240,7 @@ def save_results(results, exp_name):
     print(f"Results saved to results_{exp_name}.csv")
 
 def experiment_analysis(exp_name): 
+    # TODO: if exp_name == EXP_XTOPO, then CLIENT_IDENTIFIER is different from 'n1-n2-2-0.pcap'
     runs = get_experiment_runs(exp_name)
     results = []
     index = 1
@@ -251,7 +256,9 @@ def experiment_analysis(exp_name):
     results_analysis(results)
     save_results(results, exp_name)
     
-experiment_analysis('shaping')
+# experiment_analysis(EXP_SHAPING_COMPLEX)
+# experiment_analysis(EXP_SHAPING)
+experiment_analysis(EXP_XTOPO)
 exit(0)
 
 real_lost_packets = get_lost_packets(DROPPED_PACKETS_NS3)

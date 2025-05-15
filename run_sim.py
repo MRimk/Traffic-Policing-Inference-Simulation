@@ -1,14 +1,25 @@
 import subprocess
 import os
+import argparse
 
 COMMAND_BASE = [
         "../.././ns3",
         "run",
-        "scratch/Traffic-Policing-Inference-Simulation/WeHeY-simulation-shaping.cc"
+        "scratch/Traffic-Policing-Inference-Simulation/WeHeY-simulation-"
         ]
+EXT = ".cc"
 
-def run_simulation_shaping(burst, queueSize):
-    command = COMMAND_BASE + [
+COM_SHAPING = "shaping"
+COM_SHAPING_COMPLEX = "shaping-complex"
+COM_YTOPO = "two-servers"
+
+def get_complete_command(command):
+    complete = COMMAND_BASE
+    complete[2] = complete[2] + command + EXT
+    return complete
+
+def run_simulation_shaping(burst, queueSize, command_base=COMMAND_BASE):
+    command = command_base + [
         "--",
         f"--burst={burst}",
         f"--queueSize={queueSize}"
@@ -18,7 +29,9 @@ def run_simulation_shaping(burst, queueSize):
     except subprocess.CalledProcessError as e:
         print("Error during simulation:", e.stderr)
 
-def run_shaping_exp():
+def run_shaping_exp(command):
+    
+    command_base = get_complete_command(command)
     
     outRate = 2 * 10**6 # 2 Mbps
     rtt = 5 * 4 * 10**-3 # 5ms one link, total return time is 20ms
@@ -32,7 +45,8 @@ def run_shaping_exp():
         print(f"computed burst size: {factor * onePacket}B")
         bursts.append(f"{factor * onePacket}B")
     
-    queueFactors = [0.1, 0.5, 1, 1.5, 2, 10, 50, 100] # TODO: add other factors
+    packetSizeFactor = onePacket / bdp  
+    queueFactors = [0.1, packetSizeFactor, packetSizeFactor * 1.2, 0.5, 1, 1.5, 2, 10, 20, 25, 30, 35, 40, 50, 100]
     queueSizes = []
     for factor in queueFactors:
         print(f"computed queue size: {factor * bdp}{queueAddition}")
@@ -43,12 +57,20 @@ def run_shaping_exp():
     for b in bursts:
         for q in queueSizes:
             print(f"Running simulation with burst: {b}, queueSize: {q} | {i+1}/{size}")
-            run_simulation_shaping(b, q)
+            run_simulation_shaping(b, q, command_base)
             print("Simulation completed.\n")
             i += 1
     print("All simulations completed.") 
     
 
 if __name__ == "__main__":
-    run_shaping_exp()
+    parser = argparse.ArgumentParser(description="Run ns-3 simulation.")
+    parser.add_argument(
+        "--command",
+        choices=[COM_SHAPING, COM_SHAPING_COMPLEX, COM_YTOPO],
+        required=True,
+        help="Command to run the simulation."
+    )
+    args = parser.parse_args()
+    run_shaping_exp(args.command)
     

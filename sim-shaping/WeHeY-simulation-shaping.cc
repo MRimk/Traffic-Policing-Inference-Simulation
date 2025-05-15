@@ -54,6 +54,8 @@ static uint32_t sumRxBytes = 0;
 static double t_firstLoss = -1.0;
 static double t_lastLoss = -1.0;
 
+static const std::string SIM_NAME = "shaping";
+
 static std::vector<uint32_t> sums;
 
 static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
@@ -240,7 +242,7 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
-  assignFiles(pointToPoint1, pointToPoint2, "shaping", args);
+  assignFiles(pointToPoint1, pointToPoint2, SIM_NAME, args);
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 
@@ -268,7 +270,7 @@ int main(int argc, char *argv[]) {
   std::cout << "IP-layer Rx Count (after queue disc):  " << g_ipRxCount
             << std::endl;
 
-  std::ofstream metadata(getMetadataFileName("shaping", args));
+  std::ofstream metadata(getMetadataFileName(SIM_NAME, args));
   metadata << throughput << std::endl;  // Log throughput in bps
   metadata << sums.size() << std::endl; // Log number of dropped packets
   metadata.close();
