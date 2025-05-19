@@ -13,6 +13,7 @@
 #include "ns3/tcp-socket-factory.h"
 #include "ns3/trace-source-accessor.h"
 #include "ns3/uinteger.h"
+#include "utils.h"
 
 namespace ns3 {
 
@@ -21,6 +22,12 @@ TypeId ComplexSendApplication::GetTypeId(void) {
       TypeId("ns3::ComplexSendApplication")
           .SetParent<Application>()
           .AddConstructor<ComplexSendApplication>()
+          .AddAttribute("UsePacketDistribution",
+                        "Use the packet sizes extracted from trace",
+                        BooleanValue(false),
+                        MakeBooleanAccessor(
+                            &ComplexSendApplication::m_sendPacketDistribution),
+                        MakeBooleanChecker())
           .AddAttribute(
               "SendSize", "The amount of data to send each time.",
               UintegerValue(512),
@@ -81,6 +88,14 @@ void ComplexSendApplication::DoDispose(void) {
 void ComplexSendApplication::StartApplication(
     void) // Called at time specified by Start
 {
+  if (m_sendPacketDistribution && m_packetSizes.empty()) {
+    // Read the packet sizes from the file
+    m_packetSizes = getPacketSizes();
+    if (m_packetSizes.empty()) {
+      NS_FATAL_ERROR("No packet sizes found in the file.");
+    }
+  }
+
   // Create the socket if not already
   if (!m_socket) {
     m_socket = Socket::CreateSocket(GetNode(), m_tid);
@@ -135,26 +150,24 @@ void ComplexSendApplication::StopApplication(
 
 void ComplexSendApplication::SendData(void) {
   while (m_maxBytes == 0 || m_totBytes < m_maxBytes) { // Time to send more
-    uint32_t toSend = (m_maxPacket > 0)
-                          ? m_sizeVar->GetInteger(m_minPacket, m_maxPacket)
-                          : m_sendSize;
-    // Make sure we don't send too many
-    if (m_maxBytes > 0) {
-      toSend = (m_maxPacket > 0)
-                   ? std::min(m_sizeVar->GetInteger(m_minPacket,
-                   m_maxPacket),
-                              m_maxBytes - m_totBytes)
-                   : std::min(m_sendSize, m_maxBytes - m_totBytes);
+    uint32_t toSend = m_sendSize;
+
+    if (m_sendPacketDistribution) {
+      // Use the packet sizes extracted from trace
+      toSend = m_packetSizes[m_seq % m_packetSizes.size()];
+    } else if (m_maxPacket > 0) {
+      toSend = m_sizeVar->GetInteger(m_minPacket, m_maxPacket);
     }
+
+    toSend =
+        (m_maxBytes > 0) ? std::min(toSend, m_maxBytes - m_totBytes) : toSend;
     // std::cout << "sending packet at " << Simulator::Now() << std::endl;
     Ptr<Packet> packet = Create<Packet>(toSend);
 
     SeqTsHeader seqTs;
     seqTs.SetSeq(m_seq++);
-    toSend =
-        toSend > (8 + 4)
-            ? toSend - (8 + 4)
-            : toSend; // 8+4 : the size of the seqTs header
+    toSend = toSend > (8 + 4) ? toSend - (8 + 4)
+                              : toSend; // 8+4 : the size of the seqTs header
     if (toSend > (8 + 4)) {
       packet->AddHeader(seqTs);
     }

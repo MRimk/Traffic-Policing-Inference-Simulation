@@ -57,3 +57,38 @@ std::string getMetadataFileName(std::string simName,
                                 std::vector<std::string> &args) {
   return getFilename("metadata", simName, args);
 }
+
+std::vector<uint32_t> readSizes(const std::string &filename) {
+  std::vector<uint32_t> sizes;
+  std::ifstream file(filename);
+  if (!file.is_open()) {
+    throw std::runtime_error("Could not open file: " + filename);
+  }
+
+  std::string line;
+  // Skip header
+  if (!std::getline(file, line)) {
+    // Empty file (or inaccessible); return empty vector
+    return sizes;
+  }
+
+  // Read each line, parse to uint32_t, and collect
+  while (std::getline(file, line)) {
+    if (line.empty())
+      continue; // skip blank lines
+    try {
+      auto s = static_cast<uint32_t>(std::stoul(line));
+      sizes.push_back(s);
+    } catch (const std::exception &e) {
+      // You could log or handle malformed lines here
+      throw std::runtime_error("Invalid number in line: " + line);
+    }
+  }
+
+  return sizes;
+}
+
+std::vector<uint32_t> getPacketSizes() {
+  return readSizes("scratch/Traffic-Policing-Inference-Simulation/send_data/"
+                   "youtube_packets.csv");
+}

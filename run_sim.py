@@ -18,6 +18,21 @@ def get_complete_command(command):
     complete[2] = complete[2] + command + EXT
     return complete
 
+def run_build():
+    command = ["../.././ns3", "build"]
+    try:
+        subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True)
+    except subprocess.CalledProcessError as e:
+        print("Error during build:", e.stderr)
+        
+def process_results(arg):
+    command = ["python3", "google-paper-rate-estimation.py",
+               "--command", arg]
+    try:
+        subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True)
+    except subprocess.CalledProcessError as e:
+        print("Error during result processing:", e.stderr)
+
 def run_simulation_shaping(burst, queueSize, command_base=COMMAND_BASE):
     command = command_base + [
         "--",
@@ -71,6 +86,10 @@ if __name__ == "__main__":
         required=True,
         help="Command to run the simulation."
     )
+    
+    run_build()
     args = parser.parse_args()
     run_shaping_exp(args.command)
+    
+    process_results(args.command)
     

@@ -12,3 +12,7 @@ std::string getFilename(std::string fileContent, std::string simName,
 
 std::string getMetadataFileName(std::string simName,
                                 std::vector<std::string> &args);
+
+std::vector<uint32_t> readSizes(const std::string &filename);
+
+std::vector<uint32_t> getPacketSizes();

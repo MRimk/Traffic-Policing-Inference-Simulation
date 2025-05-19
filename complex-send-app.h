@@ -41,11 +41,14 @@ private:
   uint32_t m_totBytes;
   uint32_t m_minPacket;
   uint32_t m_maxPacket;
+  bool m_sendPacketDistribution;
   TypeId m_tid;
   Ptr<UniformRandomVariable> m_sizeVar;
   uint32_t m_seq{0};          //!< Sequence
 
   TracedCallback<Ptr<const Packet>> m_txTrace;
+
+  std::vector<uint32_t> m_packetSizes;
 
 private:
   void ConnectionSucceeded(Ptr<Socket> socket);

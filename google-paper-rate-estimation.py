@@ -2,6 +2,7 @@ import utils
 import pandas as pd
 import os
 import math
+import argparse
 
 PCAP_FILE = '../../wehe-0-0.pcap'
 
@@ -155,6 +156,25 @@ def compare_lost_with_real(df_new, df_real):
     # print("new head:", df_new.head())
     # print("real head:", df_real.head())
     # print("how many don't match: ", df_new[df_new['matches'] == False].shape)
+    
+def compute_policing_rate_avg_tx(df):
+
+    throughputs = []
+    sum_delivered = 0
+    last_loss_time = 0
+    for idx, row in df.iterrows():
+        if not row['is_lost']:
+            sum_delivered += row['pkt_len']
+        else:
+            if sum_delivered > 0:
+                throughputs.append(sum_delivered / (row['timestamp'] - last_loss_time))
+            last_loss_time = row['timestamp']
+            sum_delivered = 0
+    
+    
+    print("total sum delivered: ", sum_delivered)
+    # print("average received packet size: ", sum_delivered / counter)
+    return sum(throughputs) / len(throughputs) * 8 # convert to bps
 
 
 def get_experiment_runs(exp_name):
@@ -256,50 +276,86 @@ def experiment_analysis(exp_name):
     results_analysis(results)
     save_results(results, exp_name)
     
-# experiment_analysis(EXP_SHAPING_COMPLEX)
-# experiment_analysis(EXP_SHAPING)
-experiment_analysis(EXP_XTOPO)
-exit(0)
 
-real_lost_packets = get_lost_packets(DROPPED_PACKETS_NS3)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run ns-3 simulation.")
+    parser.add_argument(
+        "--simple",
+        action="store_true",
+        help="Run the simple simulation."
+    )
+    
+    parser.add_argument(
+        "--command",
+        choices=[EXP_SHAPING, EXP_SHAPING_COMPLEX, EXP_XTOPO],
+        required=True,
+        help="Command to run the simulation."
+    )
+    
+    args = parser.parse_args()
+    if not args.simple:
+        experiment_analysis(args.command)
+        exit(0)
+    else: 
+        runs = get_experiment_runs(args.command)
+        query_q_size = "10000.0B" # input("Enter the queue size: ")
+        burst = '7500'
+        for run in runs:
+            if run.params[1] == query_q_size and run.params[0] == burst:
+                print(f"Run: {run.name}, Policing Rate: {run.metadata[0]}, Lost Packets: {run.metadata[1]}")
+                pcap_df = run.get_pcap_df()
+                throughput = compute_policing_rate_avg_tx(pcap_df)
+                rx = run.get_client_rx_throughput()
+                print(f"Throughput at rx: {rx}")
+                print(f"Policing rate: {throughput}")
+                # print(f"Throughput at rx: {throughput}")
+                # num_lost = pcap_df[pcap_df['is_lost']== True].shape[0]
+                # print(f"Lost packets: {num_lost}")
+                # p_first, p_last = get_first_and_last_loss_index(pcap_df)
+                # rate = get_policing_rate(pcap_df, p_first, p_last)
+                # print(f"Policing rate: {rate}")
+                
+    
 
-# pcap_df = utils.get_lossEvents_from_pcap(SERVER_PCAP, SERVER_PORT)
-# pcap_df1 = utils.get_lossEvents_from_hashes(SERVER_PCAP, CLIENT_PCAP, SERVER_PORT, real_lost_packets)
-# pcap_df = utils.get_lossEvents_from_hashes(SERVER_PCAP, CLIENT_PCAP, SERVER_PORT)
-pcap_df = utils.get_lossEvents_from_server_client_pcaps(SERVER_PCAP, CLIENT_PCAP, SERVER_PORT)
-# pcap_df = utils.generate_random_loss_df(num_packets=1000)
+    # real_lost_packets = get_lost_packets(DROPPED_PACKETS_NS3)
 
-compare_lost_with_real(pcap_df[pcap_df['is_lost']== True], real_lost_packets)
+    # # pcap_df = utils.get_lossEvents_from_pcap(SERVER_PCAP, SERVER_PORT)
+    # # pcap_df1 = utils.get_lossEvents_from_hashes(SERVER_PCAP, CLIENT_PCAP, SERVER_PORT, real_lost_packets)
+    # # pcap_df = utils.get_lossEvents_from_hashes(SERVER_PCAP, CLIENT_PCAP, SERVER_PORT)
+    # pcap_df = utils.get_lossEvents_from_server_client_pcaps(SERVER_PCAP, CLIENT_PCAP, SERVER_PORT)
+    # # pcap_df = utils.generate_random_loss_df(num_packets=1000)
 
-print("pcap_df with loss events: ", pcap_df.shape)
+    # compare_lost_with_real(pcap_df[pcap_df['is_lost']== True], real_lost_packets)
 
-p_first, p_last = get_first_and_last_loss_index(pcap_df)
+    # print("pcap_df with loss events: ", pcap_df.shape)
 
-print("first and last index: ", p_first, p_last)
-rate = get_policing_rate(pcap_df, p_first, p_last)
+    # p_first, p_last = get_first_and_last_loss_index(pcap_df)
 
-# rate = get_policing_rate_delayed(pcap_df, p_first, p_last, PROPAGATION_DELAY)
-print(f"Goodput: {rate * 8} bps")
+    # print("first and last index: ", p_first, p_last)
+    # rate = get_policing_rate(pcap_df, p_first, p_last)
+
+    # # rate = get_policing_rate_delayed(pcap_df, p_first, p_last, PROPAGATION_DELAY)
+    # print(f"Goodput: {rate * 8} bps")
 
 
-t_used = 0
-t_available = 0
-lost_list = []
-passed_list = []
-# between the first and last lost packet, all packets used tokens
-for i in range(p_first + 1, p_last):
-    p_current = pcap_df.iloc[i]
-    t_produced = rate * \
-        (p_current['timestamp'] - pcap_df.iloc[p_first]
-         ['timestamp'])
-    t_available = t_produced - t_used
-    if p_current['is_lost']:
-        lost_list.append(t_available)
-    else:
-        passed_list.append(t_available)
-        t_used += p_current['pkt_len']
+    # t_used = 0
+    # t_available = 0
+    # lost_list = []
+    # passed_list = []
+    # # between the first and last lost packet, all packets used tokens
+    # for i in range(p_first + 1, p_last):
+    #     p_current = pcap_df.iloc[i]
+    #     t_produced = rate * \
+    #         (p_current['timestamp'] - pcap_df.iloc[p_first]
+    #         ['timestamp'])
+    #     t_available = t_produced - t_used
+    #     if p_current['is_lost']:
+    #         lost_list.append(t_available)
+    #     else:
+    #         passed_list.append(t_available)
+    #         t_used += p_current['pkt_len']
 
-print(f"avaiable size at the end: {t_available} B")
-print(f"used total bytes at the end: {t_used} B")
+    # print(f"avaiable size at the end: {t_available} B")
+    # print(f"used total bytes at the end: {t_used} B")
 
-# was_policing_happening(lost_list, passed_list)
+    # # was_policing_happening(lost_list, passed_list)
