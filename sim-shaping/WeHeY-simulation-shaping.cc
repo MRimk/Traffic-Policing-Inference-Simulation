@@ -58,6 +58,9 @@ static const std::string SIM_NAME = "shaping";
 
 static std::vector<uint32_t> sums;
 
+static std::ofstream cwndFile(
+    "scratch/Traffic-Policing-Inference-Simulation/data/wehe_cwnd_shaping.csv");
+
 static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
                         uint32_t interface) {
   // Called whenever IP sends down a packet (before qdisc)
@@ -74,15 +77,19 @@ static void Ipv4RxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
     sumRxBytes += packet->GetSize();
 }
 
-// void FirstBucketTokensTrace(uint32_t oldValue, uint32_t newValue) {
-//   std::cout << "FirstBucketTokens " << oldValue << " to " << newValue
-//             << std::endl;
-// }
+static void CwndTracer(uint32_t oldCwnd, uint32_t newCwnd) {
+  cwndFile << Simulator::Now().GetSeconds() << "," << newCwnd << std::endl;
+}
 
-// void SecondBucketTokensTrace(uint32_t oldValue, uint32_t newValue) {
-//   std::cout << "SecondBucketTokens " << oldValue << " to " << newValue
-//             << std::endl;
-// }
+void ConnectCwndTrace(Ptr<BulkSendApplication> app) {
+  std::cout << "ConnectCwndTrace" << std::endl;
+  Ptr<Socket> sock = app->GetSocket();
+  if (sock)
+    sock->TraceConnectWithoutContext("CongestionWindow",
+                                     MakeCallback(&CwndTracer));
+  else
+    NS_LOG_ERROR("Socket still null at connect time");
+}
 
 std::ofstream droppedPacketsFile("wehe-dropped-packets.txt");
 
@@ -104,27 +111,12 @@ void PacketDropCallback(Ptr<const QueueDiscItem> item) {
     droppedPacketsFile << dropSeconds << ",," << packet->GetSize() << std::endl;
 }
 
-// std::ofstream throughputFile("wehe-throughput.txt");
-
-// void ThroughputMonitor(Ptr<PacketSink> sink, double interval) {
-//   double bytesReceived = sink->GetTotalRx(); // Get total received bytes
-//   static double lastBytes = 0;
-
-//   double throughput =
-//       ((bytesReceived - lastBytes) * 8) / interval; // Convert to bps
-//   lastBytes = bytesReceived;
-
-//   // Log time and throughput to file
-//   throughputFile << Simulator::Now().GetSeconds() << " " << throughput / 1e6
-//                  << std::endl;
-
-//   // Schedule next measurement
-//   Simulator::Schedule(Seconds(interval), &ThroughputMonitor, sink, interval);
-// }
-
 int main(int argc, char *argv[]) {
   double simulationTime = 11.1; // seconds
-  uint32_t payloadSize = 1448;  // bytes
+  double simStart = 0.1;
+  double simEnd = simulationTime - 1;
+
+  uint32_t payloadSize = 1448; // bytes
   uint32_t burst = 500000;
   uint32_t mtu = 0; // second bucket is disabled
   DataRate rate = DataRate("2Mbps");
@@ -224,15 +216,31 @@ int main(int argc, char *argv[]) {
 
   Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(payloadSize));
 
-  BulkSendHelper bulkSend("ns3::TcpSocketFactory",
-                          InetSocketAddress(ifaces2.GetAddress(1), port));
-  bulkSend.SetAttribute("MaxBytes", UintegerValue(0));
-  bulkSend.SetAttribute("SendSize", UintegerValue(payloadSize));
+  Ptr<BulkSendApplication> app = CreateObject<BulkSendApplication>();
+  app->SetAttribute(
+      "Remote", AddressValue(InetSocketAddress(ifaces2.GetAddress(1), port)));
+  app->SetAttribute("MaxBytes", UintegerValue(0)); // 0 means send indefinitely
 
-  ApplicationContainer apps = bulkSend.Install(nodes.Get(0));
-  apps.Start(Seconds(0.1));
-  apps.Stop(
-      Seconds(simulationTime - 1)); // need to cover the whole apps duration
+  app->SetAttribute("SendSize", UintegerValue(payloadSize));
+  app->SetAttribute("Protocol", TypeIdValue(TcpSocketFactory::GetTypeId()));
+
+  nodes.Get(0)->AddApplication(app);
+  app->SetStartTime(Seconds(simStart));
+  app->SetStopTime(Seconds(simEnd));
+
+  cwndFile << "time,cwnd" << std::endl;
+  Simulator::Schedule(
+      Seconds(simStart + 1e-7), // a bit after StartApplication()
+      MakeBoundCallback(&ConnectCwndTrace, app));
+
+  // BulkSendHelper bulkSend("ns3::TcpSocketFactory",
+  //                         InetSocketAddress(ifaces2.GetAddress(1), port));
+  // bulkSend.SetAttribute("MaxBytes", UintegerValue(0));
+  // bulkSend.SetAttribute("SendSize", UintegerValue(payloadSize));
+
+  // ApplicationContainer apps = bulkSend.Install(nodes.Get(0));
+  // apps.Start(Seconds(0.1));
+  // apps.Stop(Seconds(simulationTime - 1));
   // TODO: ns3 identifier, when packet is lost, I can save the packet to a file
   // compute hash of data that uniquely identify the packet and match digest
   // with the src ip, port, dest port, ip, sequence num check if the payloads
@@ -274,6 +282,8 @@ int main(int argc, char *argv[]) {
   metadata << throughput << std::endl;  // Log throughput in bps
   metadata << sums.size() << std::endl; // Log number of dropped packets
   metadata.close();
+
+  cwndFile.close();
 
   if (!sums.empty()) {
     std::cout << std::endl << "*** Google paper estimation ***" << std::endl;
