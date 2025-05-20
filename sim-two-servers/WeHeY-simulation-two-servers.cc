@@ -32,9 +32,9 @@
 //
 // Network topology
 //
-// n4 -----|     |----- n5
-//         |     |
-// n0 -----n3 (Queue X)------n1 (TBF)----- n2
+// n4 -----|                   |----- n5
+//         |                   |
+// n0 -----n3 (Queue X) ------ n6 ------n1 (TBF)----- n2
 //    point-to-point links
 //
 // The output will consist of all the traced changes in
@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
   cmd.Parse(argc, argv);
 
   NodeContainer nodes;
-  nodes.Create(6);
+  nodes.Create(7);
 
   PointToPointHelper pointToPoint_s_0;
   pointToPoint_s_0.SetDeviceAttribute("DataRate",
@@ -151,6 +151,11 @@ int main(int argc, char *argv[]) {
                                       StringValue("20Mb/s")); // link bandwidth
   pointToPoint_s_2.SetChannelAttribute(
       "Delay", StringValue("0ms")); // no delay between X queue and TBF
+
+  PointToPointHelper pointToPoint_s_3;
+  pointToPoint_s_3.SetDeviceAttribute("DataRate",
+                                      StringValue("20Mb/s")); // link bandwidth
+  pointToPoint_s_3.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint_b_0;
   pointToPoint_b_0.SetDeviceAttribute("DataRate",
@@ -171,17 +176,21 @@ int main(int argc, char *argv[]) {
       pointToPoint_s_1.Install(nodes.Get(1), nodes.Get(2));
 
   // ADDED LAYOUT
-  // X queue -> TBF
+  // X queue -> helper node
   NetDeviceContainer devices_s_2 =
-      pointToPoint_s_2.Install(nodes.Get(3), nodes.Get(1));
+      pointToPoint_s_3.Install(nodes.Get(3), nodes.Get(6));
+
+  // helper node -> TBF
+  NetDeviceContainer devices_s_3 =
+      pointToPoint_s_2.Install(nodes.Get(6), nodes.Get(1));
 
   // Background server -> X queue
   NetDeviceContainer devices_b_0 =
       pointToPoint_b_0.Install(nodes.Get(4), nodes.Get(3));
 
-  // X queue -> background receiver
+  // helper node -> background receiver
   NetDeviceContainer devices_b_1 =
-      pointToPoint_b_1.Install(nodes.Get(3), nodes.Get(5));
+      pointToPoint_b_1.Install(nodes.Get(6), nodes.Get(5));
 
   InternetStackHelper stack;
   stack.Install(nodes);
@@ -193,7 +202,7 @@ int main(int argc, char *argv[]) {
                        UintegerValue(burst), "Mtu", UintegerValue(mtu), "Rate",
                        DataRateValue(DataRate(rate)), "PeakRate",
                        DataRateValue(DataRate(peakRate)));
-  QueueDiscContainer qdiscs = tch.Install(devices_s_1.Get(0));
+  QueueDiscContainer qdiscs = tch.Install(devices_s_3.Get(0));
   Ptr<QueueDisc> q = qdiscs.Get(0);
   q->TraceConnectWithoutContext("Drop", MakeCallback(&PacketDropCallback));
 
@@ -218,22 +227,25 @@ int main(int argc, char *argv[]) {
   //   10.1.1.x on n0 <-> n3 (Test server -> X queue)
   //   10.1.2.x on n1 <-> n2 (Original link: TBF -> receiver)
 
-  //   10.1.3.x on n3 <-> n1 (X queue -> TBF)
+  //   10.1.3.x on n3 <-> n6 (X queue -> helper node)
+  //   10.1.6.x on n6 <-> n1 (helper node -> TBF)
 
   //   10.1.4.x on n4 <-> n3 (Background server -> X queue)
   //   10.1.5.x on n3 <-> n5 (X queue -> background receiver)
 
-  Ipv4AddressHelper address_s_0, address_s_1, address_s_2, address_b_0,
+  Ipv4AddressHelper address_s_0, address_s_1, address_s_2, address_s_3, address_b_0,
       address_b_1;
   address_s_0.SetBase("10.1.1.0", "255.255.255.0");
-  address_s_2.SetBase("10.1.2.0", "255.255.255.0");
-  address_s_1.SetBase("10.1.3.0", "255.255.255.0");
+  address_s_1.SetBase("10.1.2.0", "255.255.255.0");
+  address_s_2.SetBase("10.1.3.0", "255.255.255.0");
+  address_s_3.SetBase("10.1.6.0", "255.255.255.0");
   address_b_0.SetBase("10.1.4.0", "255.255.255.0");
   address_b_1.SetBase("10.1.5.0", "255.255.255.0");
 
   Ipv4InterfaceContainer ifaces_s_0 = address_s_0.Assign(devices_s_0);
   Ipv4InterfaceContainer ifaces_s_1 = address_s_1.Assign(devices_s_1);
   Ipv4InterfaceContainer ifaces_s_2 = address_s_2.Assign(devices_s_2);
+  Ipv4InterfaceContainer ifaces_s_3 = address_s_3.Assign(devices_s_3);
   Ipv4InterfaceContainer ifaces_b_0 = address_b_0.Assign(devices_b_0);
   Ipv4InterfaceContainer ifaces_b_1 = address_b_1.Assign(devices_b_1);
 

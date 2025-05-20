@@ -36,13 +36,14 @@ SERVER_PORT = 49153
 
 
 class ExperimentRun:
-    def __init__(self, name, server_pcap, client_pcap, metadata_file, params):
+    def __init__(self, name, server_pcap, client_pcap, metadata_file, params, not_google_paper=False):
         self.name = name
         self.server_pcap = server_pcap
         self.client_pcap = client_pcap
         self.metadata_file = metadata_file
         self.params = params
         self.metadata = self.get_metadata_info()
+        self.not_google_paper = not_google_paper
 
     def get_pcap_df(self):
         return utils.get_lossEvents_from_server_client_pcaps(
@@ -53,6 +54,15 @@ class ExperimentRun:
             lines = f.readlines()
             metadata = [float(lines[0]), int(lines[1])]
             return metadata
+        
+    def get_estimated_rate(self):
+        rate = 0.0
+        if self.not_google_paper:
+            rate = compute_policing_rate_avg_tx(self.get_pcap_df())
+        else:
+            first, last = get_first_and_last_loss_index(self.get_pcap_df())
+            rate = get_policing_rate(self.get_pcap_df(), first, last)
+        return rate
         
     def get_client_rx_throughput(self):
         fields = {
@@ -158,7 +168,6 @@ def compare_lost_with_real(df_new, df_real):
     # print("how many don't match: ", df_new[df_new['matches'] == False].shape)
     
 def compute_policing_rate_avg_tx(df):
-
     throughputs = []
     sum_delivered = 0
     last_loss_time = 0
@@ -171,13 +180,17 @@ def compute_policing_rate_avg_tx(df):
             last_loss_time = row['timestamp']
             sum_delivered = 0
     
-    
-    print("total sum delivered: ", sum_delivered)
+    if sum_delivered > 0:
+        throughputs.append(sum_delivered / (df.iloc[-1]['timestamp'] - last_loss_time))
+    # print("total sum delivered: ", sum_delivered)
     # print("average received packet size: ", sum_delivered / counter)
+    print("tx count: ", len(throughputs))
+    if len(throughputs) == 0:
+        return 0
     return sum(throughputs) / len(throughputs) * 8 # convert to bps
 
 
-def get_experiment_runs(exp_name):
+def get_experiment_runs(exp_name, use_not_google_paper=False) -> list[ExperimentRun]:
     files = [f for f in os.listdir(DATA) if os.path.isfile(os.path.join(DATA, f))]
     runs = []
     for file in files:
@@ -198,7 +211,8 @@ def get_experiment_runs(exp_name):
             server_pcap=server_pcap,
             client_pcap=client_pcap,
             metadata_file=os.path.join(DATA, file),
-            params=file_params
+            params=file_params,
+            not_google_paper=use_not_google_paper
         )
         runs.append(run)
     return runs
@@ -209,22 +223,22 @@ def is_correct_num_lost(df, expected_lost):
 def is_correct_rate(rate, expected_rate):
     return ((rate - expected_rate) / expected_rate, abs(rate - expected_rate) / expected_rate)
 
-def analyse_run(run):
+def analyse_run(run: ExperimentRun):
     pcap_df = run.get_pcap_df()
     throughput = run.get_client_rx_throughput()
     print(f"Throughput at rx: {throughput}")
     num_lost = pcap_df[pcap_df['is_lost']== True].shape[0]
-    
-    if num_lost > 0 and run.metadata[1] == 0:
-        print(f"FALSE POSITIVE: Lost packets detected ({num_lost})but no expected lost packets.")
-    
-    if num_lost < 15 or run.metadata[1] == 0:
-        return {"burst": run.params[0], "queue_size": run.params[1], "rate": 0, "lost": num_lost, "error_lost": 0, "error_lost_abs": 0, "error_rate": 1, "error_rate_abs": 1, "actual_rate": run.metadata[0], "rx_rate": throughput}
+    error_lost, error_lost_abs = 0, 0
+    if not run.not_google_paper:
+        if num_lost > 0 and run.metadata[1] == 0:
+            print(f"FALSE POSITIVE: Lost packets detected ({num_lost})but no expected lost packets.")
+        
+        if num_lost < 15 or run.metadata[1] == 0:
+            return {"burst": run.params[0], "queue_size": run.params[1], "rate": 0, "lost": num_lost, "error_lost": 0, "error_lost_abs": 0, "error_rate": 1, "error_rate_abs": 1, "actual_rate": run.metadata[0], "rx_rate": throughput}
  
-    error_lost, error_lost_abs = is_correct_num_lost(pcap_df, run.metadata[1]) 
+        error_lost, error_lost_abs = is_correct_num_lost(pcap_df, run.metadata[1]) 
     
-    p_first, p_last = get_first_and_last_loss_index(pcap_df)
-    rate = get_policing_rate(pcap_df, p_first, p_last)
+    rate = run.get_estimated_rate()
     
     if throughput == 0:
         error_rate = 1
@@ -254,14 +268,15 @@ def results_analysis(results):
     print(f"Average rate error: {avg_rate_error}")
     print(f"Average lost error: {avg_lost_error}")
 
-def save_results(results, exp_name):
+def save_results(results, exp_name, not_google_paper=False):
     df = pd.DataFrame(results)
-    df.to_csv(f"{DATA}results_{exp_name}.csv", index=False)
-    print(f"Results saved to results_{exp_name}.csv")
+    name = f"{DATA}results_{exp_name}.csv" if not not_google_paper else f"{DATA}results_{exp_name}_custom.csv"
+    df.to_csv(name, index=False)
+    print(f"Results saved to {name}")
 
-def experiment_analysis(exp_name): 
+def experiment_analysis(exp_name, not_google_paper=False): 
     # TODO: if exp_name == EXP_XTOPO, then CLIENT_IDENTIFIER is different from 'n1-n2-2-0.pcap'
-    runs = get_experiment_runs(exp_name)
+    runs = get_experiment_runs(exp_name, not_google_paper)
     results = []
     index = 1
     for run in runs:
@@ -274,7 +289,7 @@ def experiment_analysis(exp_name):
         index += 1
         # print(f"Run: {run.name}, Policing Rate: {estimation['rate']}, Lost Packets: {estimation['lost']}, Error in Lost Packets: {estimation['error_lost']}, Error in Policing Rate: {estimation['error_rate']}")
     results_analysis(results)
-    save_results(results, exp_name)
+    save_results(results, exp_name, not_google_paper)
     
 
 if __name__ == "__main__":
@@ -292,12 +307,18 @@ if __name__ == "__main__":
         help="Command to run the simulation."
     )
     
+    parser.add_argument(
+        "--tx_gaps",
+        action="store_true",
+        help="Calculate the estimated rate using tx gaps."
+    )
+    
     args = parser.parse_args()
     if not args.simple:
-        experiment_analysis(args.command)
+        experiment_analysis(args.command, args.tx_gaps)
         exit(0)
     else: 
-        runs = get_experiment_runs(args.command)
+        runs = get_experiment_runs(args.command, args.tx_gaps)
         query_q_size = "10000.0B" # input("Enter the queue size: ")
         burst = '7500'
         for run in runs:
