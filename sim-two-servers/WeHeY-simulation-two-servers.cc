@@ -309,16 +309,10 @@ int main(int argc, char *argv[]) {
   args.push_back(queueSize);
   assignFiles(pointToPoint_s_0, pointToPoint_s_1, SIM_NAME, args);
 
-  FlowMonitorHelper fmHelper;
-  Ptr<FlowMonitor> monitor = fmHelper.InstallAll();
-
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
 
   Simulator::Destroy();
-
-  monitor->SerializeToXmlFile(getFilename("flowmon", SIM_NAME, args), true,
-                              true);
 
   double totalBytesReceived = g_ipRxTotal; // Get total received bytes
   double throughput =

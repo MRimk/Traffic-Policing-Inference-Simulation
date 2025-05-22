@@ -130,12 +130,12 @@ int main(int argc, char *argv[]) {
 
   PointToPointHelper pointToPoint1;
   pointToPoint1.SetDeviceAttribute("DataRate",
-                                   StringValue("20Mb/s")); // link bandwidth
+                                   StringValue("200Mb/s")); // link bandwidth
   pointToPoint1.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint2;
   pointToPoint2.SetDeviceAttribute("DataRate",
-                                   StringValue("20Mb/s")); // link bandwidth
+                                   StringValue("200Mb/s")); // link bandwidth
   pointToPoint2.SetChannelAttribute("Delay", StringValue("5ms"));
 
   NetDeviceContainer devices1 =

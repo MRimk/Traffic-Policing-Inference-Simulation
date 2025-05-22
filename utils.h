@@ -16,3 +16,7 @@ std::string getMetadataFileName(std::string simName,
 std::vector<uint32_t> readSizes(const std::string &filename);
 
 std::vector<uint32_t> getPacketSizes();
+
+void getTracerFiles(std::string simName, std::vector<std::string> &args,
+                   std::ofstream &cwndFile, std::ofstream &rttFile,
+                   std::ofstream &rtoFile);

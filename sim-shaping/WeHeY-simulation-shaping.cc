@@ -58,8 +58,12 @@ static const std::string SIM_NAME = "shaping";
 
 static std::vector<uint32_t> sums;
 
-static std::ofstream cwndFile(
-    "scratch/Traffic-Policing-Inference-Simulation/data/wehe_cwnd_shaping.csv");
+static std::ofstream cwndFile;
+static std::ofstream rttFile;
+static std::ofstream rtoFile;
+
+// (
+// "scratch/Traffic-Policing-Inference-Simulation/data/wehe_cwnd_shaping.csv");
 
 static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
                         uint32_t interface) {
@@ -81,15 +85,28 @@ static void CwndTracer(uint32_t oldCwnd, uint32_t newCwnd) {
   cwndFile << Simulator::Now().GetSeconds() << "," << newCwnd << std::endl;
 }
 
+static void RttTracer(Time oldRtt, Time newRtt) {
+  rttFile << Simulator::Now().GetSeconds() << "," << newRtt.GetSeconds() << std::endl;
+}
+
+static void RtoTracer(Time oldRto, Time newRto) {
+  rtoFile << Simulator::Now().GetSeconds() << "," << newRto.GetSeconds() << std::endl;
+}
+
 void ConnectCwndTrace(Ptr<BulkSendApplication> app) {
-  std::cout << "ConnectCwndTrace" << std::endl;
+  std::cout << "Connect TCP Traces" << std::endl;
   Ptr<Socket> sock = app->GetSocket();
-  if (sock)
+  if (sock) {
     sock->TraceConnectWithoutContext("CongestionWindow",
                                      MakeCallback(&CwndTracer));
-  else
+    sock->TraceConnectWithoutContext("RTT", MakeCallback(&RttTracer));
+    sock->TraceConnectWithoutContext("RTO", MakeCallback(&RtoTracer));
+  } else
     NS_LOG_ERROR("Socket still null at connect time");
 }
+
+// TODO: add RTT trace (RTT) to compute the RTT for that time and then pick
+// the closest RTT time
 
 std::ofstream droppedPacketsFile("wehe-dropped-packets.txt");
 
@@ -142,12 +159,12 @@ int main(int argc, char *argv[]) {
 
   PointToPointHelper pointToPoint1;
   pointToPoint1.SetDeviceAttribute("DataRate",
-                                   StringValue("20Mb/s")); // link bandwidth
+                                   StringValue("200Mb/s")); // link bandwidth
   pointToPoint1.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint2;
   pointToPoint2.SetDeviceAttribute("DataRate",
-                                   StringValue("20Mb/s")); // link bandwidth
+                                   StringValue("200Mb/s")); // link bandwidth
   pointToPoint2.SetChannelAttribute("Delay", StringValue("5ms"));
 
   NetDeviceContainer devices1 =
@@ -253,6 +270,9 @@ int main(int argc, char *argv[]) {
   assignFiles(pointToPoint1, pointToPoint2, SIM_NAME, args);
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
+
+
+  getTracerFiles(SIM_NAME, args, cwndFile, rttFile, rtoFile);
 
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();

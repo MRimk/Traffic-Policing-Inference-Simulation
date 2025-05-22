@@ -7,7 +7,6 @@ COMMAND_BASE = [
         "run",
         "scratch/Traffic-Policing-Inference-Simulation/WeHeY-simulation-"
         ]
-EXT = ".cc"
 
 COM_SHAPING = "shaping"
 COM_SHAPING_COMPLEX = "shaping-complex"
@@ -15,7 +14,7 @@ COM_YTOPO = "two-servers"
 
 def get_complete_command(command):
     complete = COMMAND_BASE
-    complete[2] = complete[2] + command + EXT
+    complete[2] = complete[2] + command
     return complete
 
 def run_build():
@@ -61,7 +60,7 @@ def run_shaping_exp(command):
         bursts.append(f"{factor * onePacket}B")
     
     packetSizeFactor = onePacket / bdp  
-    queueFactors = [0.1, packetSizeFactor, packetSizeFactor * 1.2, 0.5, 1, 1.5, 2, 10, 20, 25, 30, 35, 40, 50, 100]
+    queueFactors = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 10, 20, 25, 30, 35, 40, 50, 100]
     queueSizes = []
     for factor in queueFactors:
         print(f"computed queue size: {factor * bdp}{queueAddition}")
@@ -90,6 +89,13 @@ if __name__ == "__main__":
     run_build()
     args = parser.parse_args()
     run_shaping_exp(args.command)
+    if args.command == COM_YTOPO:
+        args.command = "xtopo"
     
     process_results(args.command)
     
+    print("Simulation completed. Running df -H to check disk space.")
+    try:
+        subprocess.run(["df", "-H"], cwd=os.path.dirname(__file__), check=True, text=True)
+    except subprocess.CalledProcessError as e:
+        print("Error during simulation:", e.stderr)

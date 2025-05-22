@@ -92,3 +92,11 @@ std::vector<uint32_t> getPacketSizes() {
   return readSizes("scratch/Traffic-Policing-Inference-Simulation/send_data/"
                    "youtube_packets.csv");
 }
+
+void getTracerFiles(std::string simName, std::vector<std::string> &args,
+                    std::ofstream &cwndFile, std::ofstream &rttFile,
+                    std::ofstream &rtoFile) {
+  cwndFile.open(getFilename("cwnd", simName, args));
+  rttFile.open(getFilename("rtt", simName, args));
+  rtoFile.open(getFilename("rto", simName, args));
+}
