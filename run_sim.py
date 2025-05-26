@@ -9,7 +9,7 @@ COMMAND_BASE = [
         ]
 
 COM_SHAPING = "shaping"
-COM_SHAPING_COMPLEX = "shaping-complex"
+COM_SHAPING_COMPLEX = "complex-shaping"
 COM_YTOPO = "two-servers"
 
 def get_complete_command(command):
@@ -76,6 +76,27 @@ def run_shaping_exp(command):
             i += 1
     print("All simulations completed.") 
     
+def delete_unnecessary_files():
+    command = [
+        "find", ".", "-type", "f",
+        "(", "-name", "*.pcap", "-o", "-name", "*.tr", ")",
+        "!", "(", "-name", "*n0-n1-0-0.pcap", "-o", "-name", "*n1-n2-2-0.pcap", ")",
+        "-delete"
+    ]
+    try:
+        subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True)
+    except subprocess.CalledProcessError as e:
+        print("Error during file deletion:", e.stderr)
+    
+def get_remaining_space():
+    print("Simulation completed. Running df -H to check disk space.")
+    
+    command = ["df", "-H"]
+    try:
+        subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True)
+    except subprocess.CalledProcessError as e:
+        print("Error during disk space check:", e.stderr)
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run ns-3 simulation.")
@@ -94,8 +115,5 @@ if __name__ == "__main__":
     
     process_results(args.command)
     
-    print("Simulation completed. Running df -H to check disk space.")
-    try:
-        subprocess.run(["df", "-H"], cwd=os.path.dirname(__file__), check=True, text=True)
-    except subprocess.CalledProcessError as e:
-        print("Error during simulation:", e.stderr)
+    delete_unnecessary_files()
+    get_remaining_space()

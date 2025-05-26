@@ -1,7 +1,7 @@
 *.pcap
 *.tr
 *flowmon*
-*cwnd*
+*_cwnd_*
 *rtt*
 *rto*
 __pycache__/

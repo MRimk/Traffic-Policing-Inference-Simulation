@@ -65,7 +65,7 @@ def compare_lost_with_real(df_new, df_real):
     # print("how many don't match: ", df_new[df_new['matches'] == False].shape)
 
 
-def get_experiment_runs(exp_name, use_not_google_paper=False) -> list[ExperimentRun]:
+def get_experiment_runs(exp_name, estimation = RateEstimationMethod.GOOGLE) -> list[ExperimentRun]:
     files = [f for f in os.listdir(DATA) if os.path.isfile(os.path.join(DATA, f))]
     runs = []
     for file in files:
@@ -87,7 +87,7 @@ def get_experiment_runs(exp_name, use_not_google_paper=False) -> list[Experiment
             client_pcap=client_pcap,
             metadata_file=os.path.join(DATA, file),
             params=file_params,
-            not_google_paper=use_not_google_paper
+            estimation=estimation
         )
         runs.append(run)
     return runs
@@ -107,15 +107,14 @@ def results_analysis(results):
     print(f"Average rate error: {avg_rate_error}")
     print(f"Average lost error: {avg_lost_error}")
 
-def save_results(results, exp_name, not_google_paper=False):
+def save_results(results, exp_name, estimation=RateEstimationMethod.GOOGLE):
     df = pd.DataFrame(results)
-    name = f"{DATA}results_{exp_name}.csv" if not not_google_paper else f"{DATA}results_{exp_name}_custom.csv"
+    name = f"{DATA}results_{exp_name}.csv" if estimation == RateEstimationMethod.GOOGLE.name else f"{DATA}results_{exp_name}_{estimation}.csv"
     df.to_csv(name, index=False)
     print(f"Results saved to {name}")
 
-def experiment_analysis(exp_name, not_google_paper=False): 
-    # TODO: if exp_name == EXP_XTOPO, then CLIENT_IDENTIFIER is different from 'n1-n2-2-0.pcap'
-    runs = get_experiment_runs(exp_name, not_google_paper)
+def experiment_analysis(exp_name, estimationAlg = RateEstimationMethod.GOOGLE): 
+    runs = get_experiment_runs(exp_name, estimationAlg)
     results = []
     index = 1
     for run in runs:
@@ -123,12 +122,12 @@ def experiment_analysis(exp_name, not_google_paper=False):
         if 'p' in run.name:
             continue
         estimation = analyse_run(run)
-        results.append(estimation)
-
+        if estimation is not None:
+            results.append(estimation)
         index += 1
-        # print(f"Run: {run.name}, Policing Rate: {estimation['rate']}, Lost Packets: {estimation['lost']}, Error in Lost Packets: {estimation['error_lost']}, Error in Policing Rate: {estimation['error_rate']}")
+
     results_analysis(results)
-    save_results(results, exp_name, not_google_paper)
+    save_results(results, exp_name, estimationAlg)
     
 
 if __name__ == "__main__":
@@ -146,18 +145,21 @@ if __name__ == "__main__":
         help="Command to run the simulation."
     )
     
+    est_choices = RateEstimationMethod.__members__.keys()
+    
     parser.add_argument(
-        "--tx_gaps",
-        action="store_true",
+        "--estimation",
+        choices=est_choices,
+        required=True,
         help="Calculate the estimated rate using tx gaps."
     )
     
     args = parser.parse_args()
     if not args.simple:
-        experiment_analysis(args.command, args.tx_gaps)
+        experiment_analysis(args.command, args.estimation)
         exit(0)
     else: 
-        runs = get_experiment_runs(args.command, args.tx_gaps)
+        runs = get_experiment_runs(args.command, args.estimation)
         query_q_size = "10000.0B" # input("Enter the queue size: ")
         burst = '7500'
         for run in runs:

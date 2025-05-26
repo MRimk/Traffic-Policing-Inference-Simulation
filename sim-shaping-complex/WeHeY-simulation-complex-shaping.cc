@@ -63,6 +63,10 @@ static const std::string SIM_NAME = "complex-shaping";
 
 static std::vector<uint32_t> sums;
 
+static std::ofstream cwndFile;
+static std::ofstream rttFile;
+static std::ofstream rtoFile;
+
 static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
                         uint32_t interface) {
   // Called whenever IP sends down a packet (before qdisc)
@@ -77,6 +81,32 @@ static void Ipv4RxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
   g_ipRxTotal += packet->GetSize();
   if (t_firstLoss > 0)
     sumRxBytes += packet->GetSize();
+}
+
+static void CwndTracer(uint32_t oldCwnd, uint32_t newCwnd) {
+  cwndFile << Simulator::Now().GetSeconds() << "," << newCwnd << std::endl;
+}
+
+static void RttTracer(Time oldRtt, Time newRtt) {
+  rttFile << Simulator::Now().GetSeconds() << "," << newRtt.GetSeconds()
+          << std::endl;
+}
+
+static void RtoTracer(Time oldRto, Time newRto) {
+  rtoFile << Simulator::Now().GetSeconds() << "," << newRto.GetSeconds()
+          << std::endl;
+}
+
+void ConnectCwndTrace(Ptr<ComplexSendApplication> app) {
+  std::cout << "Connect TCP Traces" << std::endl;
+  Ptr<Socket> sock = app->GetSocket();
+  if (sock) {
+    sock->TraceConnectWithoutContext("CongestionWindow",
+                                     MakeCallback(&CwndTracer));
+    sock->TraceConnectWithoutContext("RTT", MakeCallback(&RttTracer));
+    sock->TraceConnectWithoutContext("RTO", MakeCallback(&RtoTracer));
+  } else
+    NS_LOG_ERROR("Socket still null at connect time");
 }
 
 std::ofstream droppedPacketsFile("wehe-dropped-packets.txt");
@@ -104,7 +134,7 @@ int main(int argc, char *argv[]) {
   double simStart = 0.1;
   double simEnd = simulationTime - 1;
 
-  uint32_t payloadSize = 1448;  // bytes
+  uint32_t payloadSize = 1448; // bytes
   uint32_t burst = 500000;
   uint32_t mtu = 0; // second bucket is disabled
   DataRate rate = DataRate("2Mbps");
@@ -166,7 +196,7 @@ int main(int argc, char *argv[]) {
 
   std::cout << qdiscs.Get(0)->GetMaxSize() << std::endl;
   Ptr<QueueDisc> q = qdiscs.Get(0);
-  
+
   q->TraceConnectWithoutContext("Drop", MakeCallback(&PacketDropCallback));
 
   // Assign IP addresses:
@@ -214,12 +244,19 @@ int main(int argc, char *argv[]) {
   app->SetStartTime(Seconds(simStart));
   app->SetStopTime(Seconds(simEnd));
 
+  cwndFile << "time,cwnd" << std::endl;
+  Simulator::Schedule(
+      Seconds(simStart + 1e-7), // a bit after StartApplication()
+      MakeBoundCallback(&ConnectCwndTrace, app));
+
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
   assignFiles(pointToPoint1, pointToPoint2, SIM_NAME, args);
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
+
+  getTracerFiles(SIM_NAME, args, cwndFile, rttFile, rtoFile);
 
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
