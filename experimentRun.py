@@ -15,7 +15,7 @@ class RateEstimationMethod(Enum):
     CWND = "cwnd"
 
 class ExperimentRun:
-    def __init__(self, name, server_pcap, client_pcap, metadata_file, params, estimation=RateEstimationMethod.GOOGLE):
+    def __init__(self, name, server_pcap, client_pcap, metadata_file, params, ratio=1.0, estimation=RateEstimationMethod.GOOGLE):
         self.name = name
         self.server_pcap = server_pcap
         self.client_pcap = client_pcap
@@ -23,6 +23,7 @@ class ExperimentRun:
         self.params = params
         self.metadata = self.get_metadata_info()
         self.estimation = estimation
+        self.traffic_ratio = ratio
         
         self.field = {
             'frame.time_relative': 'time', 'tcp.seq': 'seq', 'ip.len': 'length', 'tcp.len': 'tcp_length',
@@ -53,11 +54,11 @@ class ExperimentRun:
             first, last = get_first_and_last_loss_index(self.get_pcap_df())
             rate = get_policing_rate(self.get_pcap_df(), first, last)
         elif self.estimation == RateEstimationMethod.TX_SAMPLE.name:
-            rate = compute_policing_rate_tx_samples(self.get_client_df(), sample_time=0.01)
+            rate = compute_policing_rate_tx_samples(self.get_client_df(), sample_time=self.get_rtt_on_client())
         elif self.estimation == RateEstimationMethod.CUMULATIVE.name:
-            rate = compute_policing_rate_cumulative_df(self.get_client_df(), filter=0.00001)
+            rate = compute_policing_rate_cumulative_df(self.get_client_df(), filter=0.0000)
         elif self.estimation == RateEstimationMethod.CWND.name:
-            rate = compute_using_cwnd(self.get_cwnd_details(), time_barrier = 1)
+            rate = compute_using_cwnd(self.get_cwnd_details(), time_barrier = 1.75)
         else:
             raise ValueError("Invalid estimation method")
         return rate
@@ -130,13 +131,15 @@ def analyse_run(run: ExperimentRun):
             print(f"FALSE POSITIVE: Lost packets detected ({num_lost})but no expected lost packets.")
         
         if num_lost < 15 or run.metadata[1] == 0:
-            return {"burst": run.params[0], "queue_size": run.params[1], "rate": 0, "lost": num_lost, "error_lost": 0, "error_lost_abs": 0, "error_rate": 1, "error_rate_abs": 1, "actual_rate": run.metadata[0], "rx_rate": throughput}
+            return {"burst": run.params[0], "queue_size": run.params[1], "rate": 0, "lost": num_lost, "error_lost": 0, "error_lost_abs": 0, "error_rate": 1, "error_rate_abs": 1, "actual_rate": run.metadata[0], "rx_rate": throughput, "traffic_ratio": run.traffic_ratio}
  
         error_lost, error_lost_abs = is_correct_num_lost(pcap_df, run.metadata[1]) 
     
     try:
         rate = run.get_estimated_rate()
-    except:
+    except Exception as e:
+        print(f"Error estimating rate for run {run.name}: {e}")
+        
         return None
         
     if throughput == 0:
@@ -147,6 +150,6 @@ def analyse_run(run: ExperimentRun):
         if abs(rate - run.metadata[0]) > 0:
             print(f"Rate error: {error_rate}, Rate: {rate}, Expected rate: {throughput}")
     
-    return {"burst": run.params[0], "queue_size": run.params[1], "rate": rate, "lost": num_lost, "error_lost": error_lost, "error_lost_abs": error_lost_abs, "error_rate": error_rate, "error_rate_abs": error_rate_abs,"actual_rate": run.metadata[0], "rx_rate": throughput}
+    return {"burst": run.params[0], "queue_size": run.params[1], "rate": rate, "lost": num_lost, "error_lost": error_lost, "error_lost_abs": error_lost_abs, "error_rate": error_rate, "error_rate_abs": error_rate_abs,"actual_rate": run.metadata[0], "rx_rate": throughput, "traffic_ratio": run.traffic_ratio}
     
     

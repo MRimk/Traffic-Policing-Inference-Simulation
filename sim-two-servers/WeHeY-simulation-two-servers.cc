@@ -24,6 +24,7 @@
 #include "utils.h"
 
 #include <fstream> // store throughput data
+#include <iomanip>
 #include <string>
 #include <vector>
 
@@ -60,6 +61,10 @@ static double t_lastLoss = -1.0;
 
 static const uint32_t MIN_SEND_RATE = 1;
 static const uint32_t MAX_SEND_RATE = 1448;
+
+static std::ofstream cwndFile;
+static std::ofstream rttFile;
+static std::ofstream rtoFile;
 
 static const std::string SIM_NAME = "xtopo";
 
@@ -104,6 +109,32 @@ void PacketDropCallback(Ptr<const QueueDiscItem> item) {
     droppedPacketsFile << dropSeconds << ",," << packet->GetSize() << std::endl;
 }
 
+static void CwndTracer(uint32_t oldCwnd, uint32_t newCwnd) {
+  cwndFile << Simulator::Now().GetSeconds() << "," << newCwnd << std::endl;
+}
+
+static void RttTracer(Time oldRtt, Time newRtt) {
+  rttFile << Simulator::Now().GetSeconds() << "," << newRtt.GetSeconds()
+          << std::endl;
+}
+
+static void RtoTracer(Time oldRto, Time newRto) {
+  rtoFile << Simulator::Now().GetSeconds() << "," << newRto.GetSeconds()
+          << std::endl;
+}
+
+void ConnectCwndTrace(Ptr<ComplexSendApplication> app) {
+  std::cout << "Connect TCP Traces" << std::endl;
+  Ptr<Socket> sock = app->GetSocket();
+  if (sock) {
+    sock->TraceConnectWithoutContext("CongestionWindow",
+                                     MakeCallback(&CwndTracer));
+    sock->TraceConnectWithoutContext("RTT", MakeCallback(&RttTracer));
+    sock->TraceConnectWithoutContext("RTO", MakeCallback(&RtoTracer));
+  } else
+    NS_LOG_ERROR("Socket still null at connect time");
+}
+
 int main(int argc, char *argv[]) {
   //   LogComponentEnable("TbfExample", LOG_LEVEL_INFO);
   //   LogComponentEnable("ComplexSendApplication", LOG_LEVEL_DEBUG);
@@ -118,6 +149,8 @@ int main(int argc, char *argv[]) {
   DataRate rate = DataRate("2Mbps");
   DataRate peakRate = DataRate("0bps");
 
+  double ratio = 1.0; // ratio of measurement traffic to background traffic
+
   std::string queueSize = "1p";
 
   CommandLine cmd(__FILE__);
@@ -131,40 +164,58 @@ int main(int argc, char *argv[]) {
                "instead of dropping the packet. Queue size in bytes or packets",
                queueSize);
 
+  cmd.AddValue("trafficRatio",
+               "Multiplier to compute the background traffic rate "
+               "from the measurement traffic rate. ",
+               ratio);
+
   cmd.Parse(argc, argv);
 
+  DataRate measurementRate = DataRate("200Mbps");
+  DataRate backgroundRate = measurementRate * ratio;
+
+  std::ostringstream ratio_oss;
+  ratio_oss << std::fixed << std::setprecision(2) << ratio;
+
+  std::string sim_name_full = SIM_NAME + "-" + ratio_oss.str();
   NodeContainer nodes;
   nodes.Create(7);
 
   PointToPointHelper pointToPoint_s_0;
-  pointToPoint_s_0.SetDeviceAttribute("DataRate",
-                                      StringValue("20Mb/s")); // link bandwidth
+  pointToPoint_s_0.SetDeviceAttribute(
+      "DataRate",
+      DataRateValue(measurementRate)); // link bandwidth
   pointToPoint_s_0.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint_s_1;
-  pointToPoint_s_1.SetDeviceAttribute("DataRate",
-                                      StringValue("20Mb/s")); // link bandwidth
+  pointToPoint_s_1.SetDeviceAttribute(
+      "DataRate",
+      DataRateValue(measurementRate)); // link bandwidth
   pointToPoint_s_1.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint_s_2;
-  pointToPoint_s_2.SetDeviceAttribute("DataRate",
-                                      StringValue("20Mb/s")); // link bandwidth
+  pointToPoint_s_2.SetDeviceAttribute(
+      "DataRate",
+      DataRateValue(measurementRate)); // link bandwidth
   pointToPoint_s_2.SetChannelAttribute(
       "Delay", StringValue("0ms")); // no delay between X queue and TBF
 
   PointToPointHelper pointToPoint_s_3;
-  pointToPoint_s_3.SetDeviceAttribute("DataRate",
-                                      StringValue("20Mb/s")); // link bandwidth
+  pointToPoint_s_3.SetDeviceAttribute(
+      "DataRate",
+      DataRateValue(measurementRate)); // link bandwidth
   pointToPoint_s_3.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint_b_0;
-  pointToPoint_b_0.SetDeviceAttribute("DataRate",
-                                      StringValue("20Mb/s")); // link bandwidth
+  pointToPoint_b_0.SetDeviceAttribute(
+      "DataRate",
+      DataRateValue(backgroundRate)); // link bandwidth
   pointToPoint_b_0.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint_b_1;
-  pointToPoint_b_1.SetDeviceAttribute("DataRate",
-                                      StringValue("20Mb/s")); // link bandwidth
+  pointToPoint_b_1.SetDeviceAttribute(
+      "DataRate",
+      DataRateValue(measurementRate)); // link bandwidth
   pointToPoint_b_1.SetChannelAttribute("Delay", StringValue("5ms"));
 
   // ORIGINAL LAYOUT
@@ -208,10 +259,9 @@ int main(int argc, char *argv[]) {
 
   // =========================== X Queue ==========================
   std::string queueSizeX = "100p";
-  DataRate rateX = DataRate("20Mbps"); // keep it one link speed
+  DataRate rateX = measurementRate; // keep it one link speed
   uint32_t burstX = 500000;
 
-  // TODO: burst should be constant
   TrafficControlHelper tch_x;
   tch_x.SetRootQueueDisc("ns3::TbfQueueDisc", "MaxSize",
                          QueueSizeValue(QueueSize(queueSizeX)), "Burst",
@@ -233,8 +283,8 @@ int main(int argc, char *argv[]) {
   //   10.1.4.x on n4 <-> n3 (Background server -> X queue)
   //   10.1.5.x on n3 <-> n5 (X queue -> background receiver)
 
-  Ipv4AddressHelper address_s_0, address_s_1, address_s_2, address_s_3, address_b_0,
-      address_b_1;
+  Ipv4AddressHelper address_s_0, address_s_1, address_s_2, address_s_3,
+      address_b_0, address_b_1;
   address_s_0.SetBase("10.1.1.0", "255.255.255.0");
   address_s_1.SetBase("10.1.2.0", "255.255.255.0");
   address_s_2.SetBase("10.1.3.0", "255.255.255.0");
@@ -304,10 +354,17 @@ int main(int argc, char *argv[]) {
   apps2.Start(Seconds(simStart));
   apps2.Stop(Seconds(simEnd));
 
+  cwndFile << "time,cwnd" << std::endl;
+  Simulator::Schedule(
+      Seconds(simStart + 1e-7), // a bit after StartApplication()
+      MakeBoundCallback(&ConnectCwndTrace, app));
+
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
-  assignFiles(pointToPoint_s_0, pointToPoint_s_1, SIM_NAME, args);
+  assignFiles(pointToPoint_s_0, pointToPoint_s_1, sim_name_full, args);
+
+  getTracerFiles(sim_name_full, args, cwndFile, rttFile, rtoFile);
 
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
@@ -325,7 +382,7 @@ int main(int argc, char *argv[]) {
 
   droppedPacketsFile.close();
 
-  std::ofstream metadata(getMetadataFileName(SIM_NAME, args));
+  std::ofstream metadata(getMetadataFileName(sim_name_full, args));
   metadata << throughput << std::endl;  // Log throughput in bps
   metadata << sums.size() << std::endl; // Log number of dropped packets
   metadata.close();

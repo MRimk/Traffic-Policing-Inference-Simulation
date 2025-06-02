@@ -32,23 +32,27 @@ def process_results(arg):
     except subprocess.CalledProcessError as e:
         print("Error during result processing:", e.stderr)
 
-def run_simulation_shaping(burst, queueSize, command_base=COMMAND_BASE):
+def run_simulation_oneshot(burst, queueSize, ratio, command_name, command_base=COMMAND_BASE):
     command = command_base + [
         "--",
         f"--burst={burst}",
         f"--queueSize={queueSize}"
     ]
+    if command_name == COM_YTOPO:
+        command.append(f"--trafficRatio={ratio}")
     try:
         subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True)
     except subprocess.CalledProcessError as e:
         print("Error during simulation:", e.stderr)
 
-def run_shaping_exp(command):
+def run_exp(command):
     
     command_base = get_complete_command(command)
     
+    link_count = 3 if command == COM_YTOPO else 2
+    
     outRate = 2 * 10**6 # 2 Mbps
-    rtt = 5 * 4 * 10**-3 # 5ms one link, total return time is 20ms
+    rtt = 5 * link_count * 2 * 10**-3 # 5ms one link, total return time is 20ms
     bdp = outRate * rtt / 8 # 2Mbps / 8b * 20ms = 5000B
     queueAddition = "B"
     
@@ -66,14 +70,23 @@ def run_shaping_exp(command):
         print(f"computed queue size: {factor * bdp}{queueAddition}")
         queueSizes.append(f"{factor * bdp}{queueAddition}")
     
+    ratios = []
+    if command == COM_YTOPO:
+        ratios = [0.5, 1.0, 2.0]
+    else:
+        ratios = [1.0]
+    
     i = 0
-    size = len(bursts) * len(queueSizes)
-    for b in bursts:
-        for q in queueSizes:
-            print(f"Running simulation with burst: {b}, queueSize: {q} | {i+1}/{size}")
-            run_simulation_shaping(b, q, command_base)
-            print("Simulation completed.\n")
-            i += 1
+    size = len(bursts) * len(queueSizes) * len(ratios)
+    for r in ratios:
+        for b in bursts:
+            for q in queueSizes:
+                print(f"Running simulation with burst: {b}, queueSize: {q}, ratio: {r} | {i+1}/{size}")
+                run_simulation_oneshot(b, q, r, command, command_base)
+                print("Simulation completed.\n")
+                i += 1
+                delete_unnecessary_files()
+                
     print("All simulations completed.") 
     
 def delete_unnecessary_files():
@@ -109,11 +122,9 @@ if __name__ == "__main__":
     
     run_build()
     args = parser.parse_args()
-    run_shaping_exp(args.command)
+    run_exp(args.command)
     if args.command == COM_YTOPO:
         args.command = "xtopo"
     
     process_results(args.command)
-    
-    delete_unnecessary_files()
     get_remaining_space()

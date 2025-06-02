@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import math
 import argparse
+import re
 
 from google_rate_est import *
 from explore_rate_est import *
@@ -64,22 +65,27 @@ def compare_lost_with_real(df_new, df_real):
     # print("real head:", df_real.head())
     # print("how many don't match: ", df_new[df_new['matches'] == False].shape)
 
+def make_pattern(keyword):
+    return re.compile(rf".*{re.escape(keyword)}.*")
 
 def get_experiment_runs(exp_name, estimation = RateEstimationMethod.GOOGLE) -> list[ExperimentRun]:
     files = [f for f in os.listdir(DATA) if os.path.isfile(os.path.join(DATA, f))]
     runs = []
+    pat = make_pattern(exp_name)
     for file in files:
         file_parts = file.split('_')
-        if (not exp_name in file_parts) or (not METADATA_FILE in file_parts):
+        matches = [w for w in file_parts if pat.match(w)]
+        if (len(matches) == 0) or (not METADATA_FILE in file_parts):
             continue
+        ratio = 1.0
+        if exp_name == EXP_XTOPO:
+            ratio = float(file_parts[2].split('-')[1])
         file_parts = [part for part in file_parts if part]
         file_params = file_parts[3:]
         name = str.join('_',file_params)
         sim_file_start = os.path.join(DATA, file.replace(METADATA_FILE, SIM_FILE))
         server_pcap = "".join([sim_file_start, SERVER_IDENTIFIER])
         client_pcap = "".join([sim_file_start, CLIENT_IDENTIFIER])
-        # server_pcap = os.path.join(DATA, server_pcap_name)
-        # client_pcap = os.path.join(DATA, client_pcap_name)
         
         run = ExperimentRun(
             name=name,
@@ -87,7 +93,8 @@ def get_experiment_runs(exp_name, estimation = RateEstimationMethod.GOOGLE) -> l
             client_pcap=client_pcap,
             metadata_file=os.path.join(DATA, file),
             params=file_params,
-            estimation=estimation
+            estimation=estimation,
+            ratio=ratio
         )
         runs.append(run)
     return runs
@@ -109,9 +116,21 @@ def results_analysis(results):
 
 def save_results(results, exp_name, estimation=RateEstimationMethod.GOOGLE):
     df = pd.DataFrame(results)
-    name = f"{DATA}results_{exp_name}.csv" if estimation == RateEstimationMethod.GOOGLE.name else f"{DATA}results_{exp_name}_{estimation}.csv"
-    df.to_csv(name, index=False)
-    print(f"Results saved to {name}")
+    if exp_name == EXP_XTOPO:
+        print(df)
+        for ratio_value, subset in df.groupby("traffic_ratio"):
+            ratio_str = str(ratio_value)
+            if estimation == RateEstimationMethod.GOOGLE:
+                filename = f"{DATA}results_{exp_name}-{ratio_str}.csv"
+            else:
+                filename = f"{DATA}results_{exp_name}-{ratio_str}_{estimation}.csv"
+
+            subset.to_csv(filename, index=False)
+            print(f"Results for trafficRatio={ratio_str} saved to {filename}")
+    else:   
+        name = f"{DATA}results_{exp_name}.csv" if estimation == RateEstimationMethod.GOOGLE.name else f"{DATA}results_{exp_name}_{estimation}.csv"
+        df.to_csv(name, index=False)
+        print(f"Results saved to {name}")
 
 def experiment_analysis(exp_name, estimationAlg = RateEstimationMethod.GOOGLE): 
     runs = get_experiment_runs(exp_name, estimationAlg)
