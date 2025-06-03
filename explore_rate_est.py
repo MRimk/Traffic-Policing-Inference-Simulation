@@ -11,8 +11,11 @@ def compute_policing_rate_avg_tx(df):
             throughputs.append(sum_delivered / (row['timestamp'] - last_loss_time))
             last_loss_time = row['timestamp']
             sum_delivered = 0
+    final_interval = df.iloc[-1]['timestamp'] - last_loss_time
+    if final_interval > 0:
+        throughputs.append(sum_delivered / final_interval)
     
-    throughputs.append(sum_delivered / (df.iloc[-1]['timestamp'] - last_loss_time))
+    # throughputs.append(sum_delivered / (df.iloc[-1]['timestamp'] - last_loss_time))
     # print("total sum delivered: ", sum_delivered)
     # print("average received packet size: ", sum_delivered / counter)
     print("tx count: ", len(throughputs))

@@ -221,13 +221,9 @@ def get_lossEvents_from_server_client_pcaps(server_pcap, client_pcap, server_por
     
     server_df = pcap_to_df(server_pcap, fields.keys(), pkt_filter=pkt_filter).rename(columns=fields)
     server_df = preprocess_df(server_df)
-    # print("server_df shape: ", server_df.shape)
     
     client_df = pcap_to_df(client_pcap, fields.keys(), pkt_filter=pkt_filter).rename(columns=fields)
-    client_df = preprocess_df(client_df)
-    # print("client_df shape: ", client_df.shape)
-    # print("diff of shape: ", server_df.shape[0] - client_df.shape[0])
-    
+    client_df = preprocess_df(client_df)    
     
     # reset indexing, becaues we filtered by length
     server_df = server_df.reset_index(drop=True)    
@@ -245,7 +241,7 @@ def get_lossEvents_from_server_client_pcaps(server_pcap, client_pcap, server_por
         
         # Check if there are multiple matching rows, as one is just delivered
         if len(sent_subset) > 1:
-            # TODO: edge case where we don't find any of the packets that have time lower than received, so we don't know what's up with them
+            # edge case where we don't find any of the packets that have time lower than received, so we don't know what's up with them
             # For now: they are marked as not lost
             sent_before = sent_subset[sent_subset['time'] < received_time]      
             
@@ -257,11 +253,7 @@ def get_lossEvents_from_server_client_pcaps(server_pcap, client_pcap, server_por
                 # Find the index of the row with the closest timestamp to arrival among the valid ones, and mark it as not lost
                 idx_closest = sent_before['time'].idxmax()
                 server_df.loc[idx_closest, 'is_lost'] = False
-    
-    
-    # for idx, row in server_df.iterrows():
-    #     if row['is_lost'] == True:
-    #         print(f"seq: {row['seq']}, time: {row['time']}, index: {idx}")
+
     print("server lost events shape: ", server_df[server_df['is_lost'] == True].shape)
             
     return pd.DataFrame({'timestamp': server_df.time, 'pkt_len': server_df.length, 'seq': server_df.seq, 'is_lost': server_df.is_lost})

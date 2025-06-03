@@ -23,6 +23,7 @@
 #include "utils.h"
 
 #include <fstream> // store throughput data
+#include <iostream>
 #include <vector>
 
 // This simple example shows how to use TrafficControlHelper to install a
@@ -66,12 +67,6 @@ static std::vector<uint32_t> sums;
 static std::ofstream cwndFile;
 static std::ofstream rttFile;
 static std::ofstream rtoFile;
-
-static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
-                        uint32_t interface) {
-  // Called whenever IP sends down a packet (before qdisc)
-  g_ipTxCount++;
-}
 
 static void Ipv4RxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
                         uint32_t interface) {
@@ -139,6 +134,9 @@ int main(int argc, char *argv[]) {
   uint32_t mtu = 0; // second bucket is disabled
   DataRate rate = DataRate("2Mbps");
   DataRate peakRate = DataRate("0bps");
+
+  Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(500000));
+  Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(500000));
 
   std::string queueSize = "100p";
 
@@ -214,7 +212,7 @@ int main(int argc, char *argv[]) {
   Ptr<Ipv4> ipv4_sender = nodes.Get(1)->GetObject<Ipv4>();
   Ptr<Ipv4> ipv4_dest = nodes.Get(2)->GetObject<Ipv4>();
   // “Tx” will fire when IP sends a packet down to the traffic-control layer
-  ipv4_sender->TraceConnectWithoutContext("Tx", MakeCallback(&Ipv4TxTrace));
+  // ipv4_sender->TraceConnectWithoutContext("Tx", MakeCallback(&Ipv4TxTrace));
 
   // “Rx” will fire when IP receives a packet from the traffic-control layer
   ipv4_dest->TraceConnectWithoutContext("Rx", MakeCallback(&Ipv4RxTrace));
@@ -224,6 +222,7 @@ int main(int argc, char *argv[]) {
   Address localAddress(InetSocketAddress(Ipv4Address::GetAny(), port));
   PacketSinkHelper packetSinkHelper("ns3::TcpSocketFactory", localAddress);
   ApplicationContainer sinkApp = packetSinkHelper.Install(nodes.Get(2));
+
 
   sinkApp.Start(Seconds(0.0));
   sinkApp.Stop(Seconds(simulationTime + 0.1));
@@ -237,27 +236,27 @@ int main(int argc, char *argv[]) {
   app->SetAttribute("MaxBytes", UintegerValue(0)); // 0 means send indefinitely
   app->SetAttribute("MinSend", UintegerValue(MIN_SEND_RATE));
   app->SetAttribute("MaxSend", UintegerValue(MAX_SEND_RATE));
-  // app->SetAttribute ("EndTime", TimeValue (Seconds (simEnd)));  // set the
-  // stop time
 
   nodes.Get(0)->AddApplication(app);
   app->SetStartTime(Seconds(simStart));
   app->SetStopTime(Seconds(simEnd));
 
-  cwndFile << "time,cwnd" << std::endl;
+
   Simulator::Schedule(
       Seconds(simStart + 1e-7), // a bit after StartApplication()
       MakeBoundCallback(&ConnectCwndTrace, app));
 
+
+
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
-  assignFiles(pointToPoint1, pointToPoint2, SIM_NAME, args);
+  assignFiles(pointToPoint1, pointToPoint2, devices1.Get(0), devices2.Get(1),
+              SIM_NAME, args);
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 
   getTracerFiles(SIM_NAME, args, cwndFile, rttFile, rtoFile);
-
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
   Simulator::Destroy();

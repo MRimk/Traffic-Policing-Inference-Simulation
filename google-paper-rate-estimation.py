@@ -17,8 +17,8 @@ SERVER_PCAP = '../../wehe_complex_n0-n1-2-0.pcap'
 CLIENT_PCAP = '../../wehe_complex_n1-n2-0-0.pcap'
 
 
-SERVER_IDENTIFIER = 'n0-n1-2-0.pcap'
-CLIENT_IDENTIFIER = 'n1-n2-0-0.pcap'
+SERVER_IDENTIFIER = 'n1-n2-0-0.pcap'
+CLIENT_IDENTIFIER = 'n0-n1-2-0.pcap'
 
 METADATA_FILE = 'metadata'
 SIM_FILE = 'sim'
@@ -66,7 +66,10 @@ def compare_lost_with_real(df_new, df_real):
     # print("how many don't match: ", df_new[df_new['matches'] == False].shape)
 
 def make_pattern(keyword):
-    return re.compile(rf".*{re.escape(keyword)}.*")
+    if keyword == EXP_SHAPING:
+        return re.compile(rf"(?<!-){re.escape(keyword)}(?!-)")
+    else:
+        return re.compile(rf".*{re.escape(keyword)}.*")
 
 def get_experiment_runs(exp_name, estimation = RateEstimationMethod.GOOGLE) -> list[ExperimentRun]:
     files = [f for f in os.listdir(DATA) if os.path.isfile(os.path.join(DATA, f))]
@@ -181,6 +184,7 @@ if __name__ == "__main__":
         runs = get_experiment_runs(args.command, args.estimation)
         query_q_size = "10000.0B" # input("Enter the queue size: ")
         burst = '7500'
+        
         for run in runs:
             if run.params[1] == query_q_size and run.params[0] == burst:
                 print(f"Run: {run.name}, Policing Rate: {run.metadata[0]}, Lost Packets: {run.metadata[1]}")

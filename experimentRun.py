@@ -32,11 +32,15 @@ class ExperimentRun:
             'tcp.ack': 'ack'
         }
         
+        self.pcap_df = None
+        self.client_df = None
+        
         self.pkt_filter = "tcp.srcport=={}".format(SERVER_PORT)
 
     def get_pcap_df(self):
-        return utils.get_lossEvents_from_server_client_pcaps(
+        self.pcap_df = utils.get_lossEvents_from_server_client_pcaps(
             self.server_pcap, self.client_pcap, SERVER_PORT)
+        return self.pcap_df
         
     def get_metadata_info(self):
         if not self.metadata_file:
@@ -51,12 +55,16 @@ class ExperimentRun:
         if self.estimation == RateEstimationMethod.TX_GAPS.name:
             rate = compute_policing_rate_avg_tx(self.get_pcap_df())
         elif self.estimation == RateEstimationMethod.GOOGLE.name:
-            first, last = get_first_and_last_loss_index(self.get_pcap_df())
-            rate = get_policing_rate(self.get_pcap_df(), first, last)
+            if self.pcap_df is None:
+                self.get_pcap_df()
+            first, last = get_first_and_last_loss_index(self.pcap_df)
+            rate = get_policing_rate(self.pcap_df, first, last)
         elif self.estimation == RateEstimationMethod.TX_SAMPLE.name:
-            rate = compute_policing_rate_tx_samples(self.get_client_df(), sample_time=self.get_rtt_on_client())
+            df = self.client_df if self.client_df is not None else self.get_client_df()
+            rate = compute_policing_rate_tx_samples(df, sample_time=self.get_rtt_on_client())
         elif self.estimation == RateEstimationMethod.CUMULATIVE.name:
-            rate = compute_policing_rate_cumulative_df(self.get_client_df(), filter=0.0000)
+            df = self.client_df if self.client_df is not None else self.get_client_df()
+            rate = compute_policing_rate_cumulative_df(df, filter=0.0000)
         elif self.estimation == RateEstimationMethod.CWND.name:
             rate = compute_using_cwnd(self.get_cwnd_details(), time_barrier = 1.75)
         else:
@@ -73,9 +81,8 @@ class ExperimentRun:
         return rtt
     
     def get_client_df(self):
-        client_df = utils.pcap_to_df(self.client_pcap, self.field.keys(), pkt_filter=self.pkt_filter).rename(columns=self.field)
-        # client_df = preprocess_df(client_df)
-        return client_df
+        self.client_df = utils.pcap_to_df(self.client_pcap, self.field.keys(), pkt_filter=self.pkt_filter).rename(columns=self.field)
+        return self.client_df
         
     def get_client_rx_throughput(self):
         client_df = self.get_client_df()
@@ -121,27 +128,29 @@ def is_correct_rate(rate, expected_rate):
     return ((rate - expected_rate) / expected_rate, abs(rate - expected_rate) / expected_rate)
 
 def analyse_run(run: ExperimentRun):
-    pcap_df = run.get_pcap_df()
-    throughput = run.get_client_rx_throughput()
-    print(f"Throughput at rx: {throughput}")
-    num_lost = pcap_df[pcap_df['is_lost']== True].shape[0]
     error_lost, error_lost_abs = 0, 0
+    throughput = 2000000 # default value for throughput if no packets are received
+    num_lost = 0
     if run.estimation == RateEstimationMethod.GOOGLE.name:
+        pcap_df = run.get_pcap_df()
+        throughput = run.get_client_rx_throughput()
+        print(f"Throughput at rx: {throughput}")
+        num_lost = pcap_df[pcap_df['is_lost']== True].shape[0]
         if num_lost > 0 and run.metadata[1] == 0:
             print(f"FALSE POSITIVE: Lost packets detected ({num_lost})but no expected lost packets.")
         
         if num_lost < 15 or run.metadata[1] == 0:
             return {"burst": run.params[0], "queue_size": run.params[1], "rate": 0, "lost": num_lost, "error_lost": 0, "error_lost_abs": 0, "error_rate": 1, "error_rate_abs": 1, "actual_rate": run.metadata[0], "rx_rate": throughput, "traffic_ratio": run.traffic_ratio}
  
-        error_lost, error_lost_abs = is_correct_num_lost(pcap_df, run.metadata[1]) 
-    
+        if run.estimation == RateEstimationMethod.GOOGLE.name:
+            error_lost, error_lost_abs = is_correct_num_lost(pcap_df, run.metadata[1]) 
+        
     try:
         rate = run.get_estimated_rate()
     except Exception as e:
         print(f"Error estimating rate for run {run.name}: {e}")
-        
         return None
-        
+    
     if throughput == 0:
         error_rate = 1
         error_rate_abs = 1
