@@ -1,6 +1,7 @@
 import subprocess
 import os
 import argparse
+import time
 
 COMMAND_BASE = [
         "../.././ns3",
@@ -11,6 +12,8 @@ COMMAND_BASE = [
 COM_SHAPING = "shaping"
 COM_SHAPING_COMPLEX = "complex-shaping"
 COM_YTOPO = "two-servers"
+
+START_TIME = time.time()
 
 def get_complete_command(command):
     complete = COMMAND_BASE
@@ -41,9 +44,12 @@ def run_simulation_oneshot(burst, queueSize, ratio, command_name, command_base=C
     if command_name == COM_YTOPO:
         command.append(f"--trafficRatio={ratio}")
     try:
-        subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True)
+        subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired as e:
+        print(f"Command timed out after {e.timeout} seconds")
     except subprocess.CalledProcessError as e:
         print("Error during simulation:", e.stderr)
+    
 
 def run_exp(command):
     
@@ -58,6 +64,8 @@ def run_exp(command):
     
     onePacket = 1500 # 1500B
     burstFactors = [0.5, 1, 5, 25, 100]
+    # burstFactors = [0.5, 1, 5, 25]
+    # burstFactors = [100]
     bursts = []
     for factor in burstFactors:
         print(f"computed burst size: {factor * onePacket}B")
@@ -76,16 +84,25 @@ def run_exp(command):
     else:
         ratios = [1.0]
     
-    i = 0
+    i = 1
     size = len(bursts) * len(queueSizes) * len(ratios)
+    average_elapsed_time = 0.0
+    sum_elapsed_time = 0.0
     for r in ratios:
         for b in bursts:
             for q in queueSizes:
-                print(f"Running simulation with burst: {b}, queueSize: {q}, ratio: {r} | {i+1}/{size}")
+                print(f"Running simulation with burst: {b}, queueSize: {q}, ratio: {r} | {i}/{size}")
+                last_time = time.time()
                 run_simulation_oneshot(b, q, r, command, command_base)
-                print("Simulation completed.\n")
+                current_time = time.time()
+                elapsed_time = current_time - last_time
+                sum_elapsed_time += elapsed_time
+                average_elapsed_time = sum_elapsed_time / i
+                estimated_finish = START_TIME + average_elapsed_time * size 
+                finish_time = time.strftime('%H:%M:%S', time.localtime(estimated_finish))
+                print(f"\nElapsed time for this simulation: {elapsed_time:.2f} seconds. Estimated finish time: {finish_time} (hh:mm:ss)\n")
                 i += 1
-                delete_unnecessary_files()
+                # delete_unnecessary_files()
                 
     print("All simulations completed.") 
     
@@ -93,7 +110,7 @@ def delete_unnecessary_files():
     command = [
         "find", ".", "-type", "f",
         "(", "-name", "*.pcap", "-o", "-name", "*.tr", ")",
-        "!", "(", "-name", "*n0-n1-0-0.pcap", "-o", "-name", "*n1-n2-2-0.pcap", ")",
+        "!", "(", "-name", "*n0-n1-2-0.pcap", "-o", "-name", "*n1-n2-0-0.pcap", ")",
         "-delete"
     ]
     try:
@@ -109,6 +126,9 @@ def get_remaining_space():
         subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True)
     except subprocess.CalledProcessError as e:
         print("Error during disk space check:", e.stderr)
+        
+def get_current_time():
+    print(time.strftime('%H:%M:%S', time.localtime(time.time())))
     
 
 if __name__ == "__main__":
@@ -119,6 +139,8 @@ if __name__ == "__main__":
         required=True,
         help="Command to run the simulation."
     )
+    
+    get_current_time()
     
     run_build()
     args = parser.parse_args()

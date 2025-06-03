@@ -1,7 +1,7 @@
 #include "utils.h"
 #include "ns3/point-to-point-module.h"
 
-void assignFiles(PointToPointHelper pp1, PointToPointHelper pp2,
+void assignFiles(PointToPointHelper pp1, PointToPointHelper pp2, Ptr<NetDevice> d1, Ptr<NetDevice> d2,
                  std::string name, std::vector<std::string> &args) {
   AsciiTraceHelper ascii;
 
@@ -34,10 +34,10 @@ void assignFiles(PointToPointHelper pp1, PointToPointHelper pp2,
   traceFileNameStream << ".tr";
   std::string traceFileClient = traceFileNameStream.str();
 
-  pp1.EnableAsciiAll(ascii.CreateFileStream(traceFileServer));
-  pp2.EnableAsciiAll(ascii.CreateFileStream(traceFileClient));
-  pp1.EnablePcapAll(pcapServerSide);
-  pp2.EnablePcapAll(pcapClientSide);
+  // pp1.EnableAsciiAll(ascii.CreateFileStream(traceFileServer));
+  // pp2.EnableAsciiAll(ascii.CreateFileStream(traceFileClient));
+  pp1.EnablePcap(pcapServerSide, d1, true);
+  pp2.EnablePcap(pcapClientSide, d2, true);
 }
 
 std::string getFilename(std::string fileContent, std::string simName,

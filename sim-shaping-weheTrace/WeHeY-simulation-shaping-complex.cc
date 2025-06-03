@@ -63,12 +63,6 @@ static const std::string SIM_NAME = "complex-shaping";
 
 static std::vector<uint32_t> sums;
 
-static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
-                        uint32_t interface) {
-  // Called whenever IP sends down a packet (before qdisc)
-  g_ipTxCount++;
-}
-
 static void Ipv4RxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
                         uint32_t interface) {
   // Called whenever IP receives a packet (after it’s demuxed up from L2)
@@ -109,6 +103,9 @@ int main(int argc, char *argv[]) {
   uint32_t mtu = 0; // second bucket is disabled
   DataRate rate = DataRate("2Mbps");
   DataRate peakRate = DataRate("0bps");
+
+  Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(500000));
+  Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(500000));
 
   std::string queueSize = "100p";
 
@@ -184,7 +181,7 @@ int main(int argc, char *argv[]) {
   Ptr<Ipv4> ipv4_sender = nodes.Get(1)->GetObject<Ipv4>();
   Ptr<Ipv4> ipv4_dest = nodes.Get(2)->GetObject<Ipv4>();
   // “Tx” will fire when IP sends a packet down to the traffic-control layer
-  ipv4_sender->TraceConnectWithoutContext("Tx", MakeCallback(&Ipv4TxTrace));
+  // ipv4_sender->TraceConnectWithoutContext("Tx", MakeCallback(&Ipv4TxTrace));
 
   // “Rx” will fire when IP receives a packet from the traffic-control layer
   ipv4_dest->TraceConnectWithoutContext("Rx", MakeCallback(&Ipv4RxTrace));
@@ -217,7 +214,7 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
-  assignFiles(pointToPoint1, pointToPoint2, SIM_NAME, args);
+  assignFiles(pointToPoint1, pointToPoint2, devices1, devices2, SIM_NAME, args);
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 

@@ -110,6 +110,9 @@ int main(int argc, char *argv[]) {
   DataRate rate = DataRate("2Mbps");
   DataRate peakRate = DataRate("0bps");
 
+  Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(500000));
+  Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(500000));
+
   std::string queueSize = "100p";
 
   CommandLine cmd(__FILE__);
@@ -218,7 +221,7 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
-  assignFiles(pointToPoint1, pointToPoint2, SIM_NAME, args);
+  assignFiles(pointToPoint1, pointToPoint2, devices1, devices2, SIM_NAME, args);
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 

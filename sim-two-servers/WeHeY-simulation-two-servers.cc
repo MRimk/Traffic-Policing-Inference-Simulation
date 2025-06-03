@@ -72,12 +72,7 @@ static uint16_t testPort = 7;
 static uint16_t backgroundPort = 8;
 
 static std::vector<uint32_t> sums;
-
-static void Ipv4TxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
-                        uint32_t interface) {
-  // Called whenever IP sends down a packet (before qdisc)
-  g_ipTxCount++;
-}
+static std::vector<uint32_t> inQueue;
 
 static void Ipv4RxTrace(Ptr<const Packet> packet, Ptr<Ipv4> ipv4,
                         uint32_t interface) {
@@ -107,6 +102,10 @@ void PacketDropCallback(Ptr<const QueueDiscItem> item) {
                        << packet->GetSize() << std::endl;
   else
     droppedPacketsFile << dropSeconds << ",," << packet->GetSize() << std::endl;
+}
+
+void PacketsInQueueCallback(uint32_t oldValue, uint32_t newValue) {
+  inQueue.push_back(newValue);
 }
 
 static void CwndTracer(uint32_t oldCwnd, uint32_t newCwnd) {
@@ -148,6 +147,10 @@ int main(int argc, char *argv[]) {
   uint32_t mtu = 0; // second bucket is disabled
   DataRate rate = DataRate("2Mbps");
   DataRate peakRate = DataRate("0bps");
+  double rtt = 0.03;
+
+  Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(1500000));
+  Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(1500000));
 
   double ratio = 1.0; // ratio of measurement traffic to background traffic
 
@@ -173,6 +176,7 @@ int main(int argc, char *argv[]) {
 
   DataRate measurementRate = DataRate("200Mbps");
   DataRate backgroundRate = measurementRate * ratio;
+  DataRate intermediateRate = (measurementRate + backgroundRate) * 0.6;
 
   std::ostringstream ratio_oss;
   ratio_oss << std::fixed << std::setprecision(2) << ratio;
@@ -203,7 +207,7 @@ int main(int argc, char *argv[]) {
   PointToPointHelper pointToPoint_s_3;
   pointToPoint_s_3.SetDeviceAttribute(
       "DataRate",
-      DataRateValue(measurementRate)); // link bandwidth
+      DataRateValue(intermediateRate)); // link bandwidth
   pointToPoint_s_3.SetChannelAttribute("Delay", StringValue("5ms"));
 
   PointToPointHelper pointToPoint_b_0;
@@ -215,7 +219,7 @@ int main(int argc, char *argv[]) {
   PointToPointHelper pointToPoint_b_1;
   pointToPoint_b_1.SetDeviceAttribute(
       "DataRate",
-      DataRateValue(measurementRate)); // link bandwidth
+      DataRateValue(backgroundRate)); // link bandwidth
   pointToPoint_b_1.SetChannelAttribute("Delay", StringValue("5ms"));
 
   // ORIGINAL LAYOUT
@@ -228,11 +232,11 @@ int main(int argc, char *argv[]) {
 
   // ADDED LAYOUT
   // X queue -> helper node
-  NetDeviceContainer devices_s_2 =
+  NetDeviceContainer devices_s_3 =
       pointToPoint_s_3.Install(nodes.Get(3), nodes.Get(6));
 
   // helper node -> TBF
-  NetDeviceContainer devices_s_3 =
+  NetDeviceContainer devices_s_2 =
       pointToPoint_s_2.Install(nodes.Get(6), nodes.Get(1));
 
   // Background server -> X queue
@@ -253,25 +257,24 @@ int main(int argc, char *argv[]) {
                        UintegerValue(burst), "Mtu", UintegerValue(mtu), "Rate",
                        DataRateValue(DataRate(rate)), "PeakRate",
                        DataRateValue(DataRate(peakRate)));
-  QueueDiscContainer qdiscs = tch.Install(devices_s_3.Get(0));
+  QueueDiscContainer qdiscs = tch.Install(devices_s_1.Get(0));
   Ptr<QueueDisc> q = qdiscs.Get(0);
   q->TraceConnectWithoutContext("Drop", MakeCallback(&PacketDropCallback));
 
   // =========================== X Queue ==========================
-  std::string queueSizeX = "100p";
-  DataRate rateX = measurementRate; // keep it one link speed
-  uint32_t burstX = 500000;
+  uint64_t bitRate = measurementRate.GetBitRate();
+
+  double bdpBits =
+      static_cast<uint32_t>(static_cast<double>(bitRate) * rtt / 8.0);
 
   TrafficControlHelper tch_x;
-  tch_x.SetRootQueueDisc("ns3::TbfQueueDisc", "MaxSize",
-                         QueueSizeValue(QueueSize(queueSizeX)), "Burst",
-                         UintegerValue(burstX), "Mtu", UintegerValue(mtu),
-                         "Rate", DataRateValue(DataRate(rateX)), "PeakRate",
-                         DataRateValue(DataRate(peakRate)));
-  QueueDiscContainer qdiscs_x = tch_x.Install(devices_s_2.Get(0));
-  // Ptr<QueueDisc> q = qdiscs.Get(0);
-  // q->TraceConnectWithoutContext("Drop", MakeCallback(&PacketDropCallback));
-
+  tch_x.SetRootQueueDisc(
+      "ns3::FifoQueueDisc", "MaxSize",
+      QueueSizeValue(QueueSize(QueueSizeUnit::BYTES, bdpBits)));
+  QueueDiscContainer qdiscs_x = tch_x.Install(devices_s_3.Get(0));
+  Ptr<QueueDisc> q_x = qdiscs_x.Get(0);
+  q_x->TraceConnectWithoutContext("PacketsInQueue",
+                                  MakeCallback(&PacketsInQueueCallback));
   // Assign IP addresses:
 
   //   10.1.1.x on n0 <-> n3 (Test server -> X queue)
@@ -303,8 +306,6 @@ int main(int argc, char *argv[]) {
 
   Ptr<Ipv4> ipv4_sender = nodes.Get(1)->GetObject<Ipv4>();
   Ptr<Ipv4> ipv4_dest = nodes.Get(2)->GetObject<Ipv4>();
-  // “Tx” will fire when IP sends a packet down to the traffic-control layer
-  ipv4_sender->TraceConnectWithoutContext("Tx", MakeCallback(&Ipv4TxTrace));
 
   // “Rx” will fire when IP receives a packet from the traffic-control layer
   ipv4_dest->TraceConnectWithoutContext("Rx", MakeCallback(&Ipv4RxTrace));
@@ -335,15 +336,13 @@ int main(int argc, char *argv[]) {
   app->SetAttribute("MaxBytes", UintegerValue(0)); // 0 means send indefinitely
   app->SetAttribute("MinSend", UintegerValue(MIN_SEND_RATE));
   app->SetAttribute("MaxSend", UintegerValue(MAX_SEND_RATE));
-  // app->SetAttribute ("EndTime", TimeValue (Seconds (simEnd)));  // set the
-  // stop time
 
   nodes.Get(0)->AddApplication(app);
   app->SetStartTime(Seconds(simStart));
   app->SetStopTime(Seconds(simEnd));
 
   // sender 2
-  // TODO: background should be random sized or constant sized?
+  // background is constant sized
   BulkSendHelper bulkSend2(
       "ns3::TcpSocketFactory",
       InetSocketAddress(ifaces_b_1.GetAddress(1), backgroundPort));
@@ -362,7 +361,7 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
-  assignFiles(pointToPoint_s_0, pointToPoint_s_1, sim_name_full, args);
+  assignFiles(pointToPoint_s_0, pointToPoint_s_1, devices_s_0.Get(0), devices_s_1.Get(1), sim_name_full, args);
 
   getTracerFiles(sim_name_full, args, cwndFile, rttFile, rtoFile);
 
@@ -379,6 +378,15 @@ int main(int argc, char *argv[]) {
   std::cout << "Total Bytes Received: " << totalBytesReceived << " bytes"
             << std::endl;
   std::cout << "Throughput: " << throughput / 1e6 << " Mbps" << std::endl;
+
+  uint32_t allpackets = 0;
+  for (const auto &num : inQueue) {
+    allpackets += num;
+  }
+
+  std::cout << "\n*** In-Queue Statistics ***" << std::endl;
+  std::cout << "In-Queue Average Packet Count: "
+            << allpackets / static_cast<double>(inQueue.size()) << std::endl;
 
   droppedPacketsFile.close();
 

@@ -13,12 +13,12 @@ PCAP_FILE = '../../wehe-0-0.pcap'
 
 # SERVER_PCAP = '../../wehe-0-0.pcap'
 # CLIENT_PCAP = '../../wehe-1-0.pcap'
-SERVER_PCAP = '../../wehe_complex_n0-n1-0-0.pcap'
-CLIENT_PCAP = '../../wehe_complex_n1-n2-2-0.pcap'
+SERVER_PCAP = '../../wehe_complex_n0-n1-2-0.pcap'
+CLIENT_PCAP = '../../wehe_complex_n1-n2-0-0.pcap'
 
 
-SERVER_IDENTIFIER = 'n0-n1-0-0.pcap'
-CLIENT_IDENTIFIER = 'n1-n2-2-0.pcap'
+SERVER_IDENTIFIER = 'n0-n1-2-0.pcap'
+CLIENT_IDENTIFIER = 'n1-n2-0-0.pcap'
 
 METADATA_FILE = 'metadata'
 SIM_FILE = 'sim'
