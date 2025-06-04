@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 def compute_policing_rate_avg_tx(df):
     throughputs = []
@@ -40,7 +41,9 @@ def compute_policing_rate_tx_samples(client: pd.DataFrame, sample_time: float = 
     throughputs.append(sum_delivered / sample_time)
     if len(throughputs) == 0:
         return 0
-    return sum(throughputs) / len(throughputs) * 8 # convert to bps
+    
+    return float(np.median(throughputs)) * 8 # convert to bps
+    # return float(np.mean(throughputs)) * 8 # convert to bps
 
 def compute_policing_rate_cumulative_df(client: pd.DataFrame, filter: float = 0.0006):
     client = client.sort_values(by='time').reset_index(drop=True)

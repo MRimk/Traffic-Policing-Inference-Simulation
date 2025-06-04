@@ -64,7 +64,7 @@ def run_exp(command):
     
     onePacket = 1500 # 1500B
     burstFactors = [0.5, 1, 5, 25, 100]
-    # burstFactors = [0.5, 1, 5, 25]
+    # burstFactors = [5, 25, 100]
     # burstFactors = [100]
     bursts = []
     for factor in burstFactors:
@@ -72,7 +72,8 @@ def run_exp(command):
         bursts.append(f"{factor * onePacket}B")
     
     packetSizeFactor = onePacket / bdp  
-    queueFactors = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 10, 20, 25, 30, 35, 40, 50, 100]
+    # queueFactors = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 5, 10, 20, 25, 30, 35, 40, 50, 100]
+    queueFactors = [3, 5]
     queueSizes = []
     for factor in queueFactors:
         print(f"computed queue size: {factor * bdp}{queueAddition}")

@@ -66,7 +66,7 @@ class ExperimentRun:
             df = self.client_df if self.client_df is not None else self.get_client_df()
             rate = compute_policing_rate_cumulative_df(df, filter=0.0000)
         elif self.estimation == RateEstimationMethod.CWND.name:
-            rate = compute_using_cwnd(self.get_cwnd_details(), time_barrier = 1.75)
+            rate = compute_using_cwnd(self.get_cwnd_details(), time_barrier = 4)
         else:
             raise ValueError("Invalid estimation method")
         return rate
