@@ -35,7 +35,7 @@ def process_results(arg):
     except subprocess.CalledProcessError as e:
         print("Error during result processing:", e.stderr)
 
-def run_simulation_oneshot(burst, queueSize, ratio, command_name, command_base=COMMAND_BASE):
+def run_simulation_oneshot(burst, queueSize, ratio, command_name, command_base=COMMAND_BASE, reno=False):
     command = command_base + [
         "--",
         f"--burst={burst}",
@@ -43,6 +43,9 @@ def run_simulation_oneshot(burst, queueSize, ratio, command_name, command_base=C
     ]
     if command_name == COM_YTOPO:
         command.append(f"--trafficRatio={ratio}")
+    
+    if reno:
+        command.append(f"--reno=1")
     try:
         subprocess.run(command, cwd=os.path.dirname(__file__), check=True, text=True, timeout=120)
     except subprocess.TimeoutExpired as e:
@@ -51,11 +54,14 @@ def run_simulation_oneshot(burst, queueSize, ratio, command_name, command_base=C
         print("Error during simulation:", e.stderr)
     
 
-def run_exp(command):
+def run_exp(command, reno = False):
     
     command_base = get_complete_command(command)
     
     link_count = 3 if command == COM_YTOPO else 2
+    
+    # TODO: run xtopo of ratio to 2BDP, to 8 burst
+    # and variable packet sizes, TCP New Reno for presentation
     
     outRate = 2 * 10**6 # 2 Mbps
     rtt = 5 * link_count * 2 * 10**-3 # 5ms one link, total return time is 20ms
@@ -63,7 +69,9 @@ def run_exp(command):
     queueAddition = "B"
     
     onePacket = 1500 # 1500B
-    burstFactors = [0.5, 1, 5, 25, 100]
+    #TODO: run for presentation 3, 8 factors
+    # burstFactors = [0.5, 1, 5, 25, 100]
+    burstFactors = [1, 3, 8]
     # burstFactors = [5, 25, 100]
     # burstFactors = [100]
     bursts = []
@@ -71,9 +79,13 @@ def run_exp(command):
         print(f"computed burst size: {factor * onePacket}B")
         bursts.append(f"{factor * onePacket}B")
     
-    packetSizeFactor = onePacket / bdp  
-    # queueFactors = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 5, 10, 20, 25, 30, 35, 40, 50, 100]
-    queueFactors = [3, 5]
+    packetSizeFactor = onePacket / bdp
+    
+    #TODO: rerun everything with queueSize as multiples of 1500B 
+      
+    # queueFactors = [packetSizeFactor]
+    # queueFactors = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 5, 10, 20, 25, 30, 35, 40, 50, 100]
+    queueFactors = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 5]
     queueSizes = []
     for factor in queueFactors:
         print(f"computed queue size: {factor * bdp}{queueAddition}")
@@ -81,7 +93,8 @@ def run_exp(command):
     
     ratios = []
     if command == COM_YTOPO:
-        ratios = [0.5, 1.0, 2.0]
+        # ratios = [0.5, 1.0, 2.0]
+        ratios = [2.0]
     else:
         ratios = [1.0]
     
@@ -94,7 +107,7 @@ def run_exp(command):
             for q in queueSizes:
                 print(f"Running simulation with burst: {b}, queueSize: {q}, ratio: {r} | {i}/{size}")
                 last_time = time.time()
-                run_simulation_oneshot(b, q, r, command, command_base)
+                run_simulation_oneshot(b, q, r, command, command_base, reno)
                 current_time = time.time()
                 elapsed_time = current_time - last_time
                 sum_elapsed_time += elapsed_time
@@ -141,11 +154,18 @@ if __name__ == "__main__":
         help="Command to run the simulation."
     )
     
+    parser.add_argument(
+        "--reno",
+        action="store_true",
+        help="Enable TCP NewReno in the simulation."
+    )
+    
+    
     get_current_time()
     
     run_build()
     args = parser.parse_args()
-    run_exp(args.command)
+    run_exp(args.command, args.reno)
     if args.command == COM_YTOPO:
         args.command = "xtopo"
     

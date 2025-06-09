@@ -152,9 +152,14 @@ int main(int argc, char *argv[]) {
   Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(1500000));
   Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(1500000));
 
+  Config::SetDefault("ns3::TcpL4Protocol::SocketType",
+                     TypeIdValue(TcpNewReno::GetTypeId()));
+
   double ratio = 1.0; // ratio of measurement traffic to background traffic
 
   std::string queueSize = "1p";
+
+  uint32_t reno = 0;
 
   CommandLine cmd(__FILE__);
   cmd.AddValue("burst", "Size of first bucket in bytes", burst);
@@ -171,6 +176,8 @@ int main(int argc, char *argv[]) {
                "Multiplier to compute the background traffic rate "
                "from the measurement traffic rate. ",
                ratio);
+  cmd.AddValue("reno",
+               "Set to use TCP Reno instead of Cubic (default is Cubic)", reno);
 
   cmd.Parse(argc, argv);
 
@@ -182,6 +189,14 @@ int main(int argc, char *argv[]) {
   ratio_oss << std::fixed << std::setprecision(2) << ratio;
 
   std::string sim_name_full = SIM_NAME + "-" + ratio_oss.str();
+
+  if (reno) {
+     Config::SetDefault("ns3::TcpL4Protocol::SocketType",
+                     TypeIdValue(TcpNewReno::GetTypeId()));
+    std::cout << "Using TCP Reno" << std::endl;
+    sim_name_full = "reno-" + sim_name_full;
+  }
+
   NodeContainer nodes;
   nodes.Create(7);
 
@@ -361,7 +376,8 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
-  assignFiles(pointToPoint_s_0, pointToPoint_s_1, devices_s_0.Get(0), devices_s_1.Get(1), sim_name_full, args);
+  assignFiles(pointToPoint_s_0, pointToPoint_s_1, devices_s_0.Get(0),
+              devices_s_1.Get(1), sim_name_full, args);
 
   getTracerFiles(sim_name_full, args, cwndFile, rttFile, rtoFile);
 

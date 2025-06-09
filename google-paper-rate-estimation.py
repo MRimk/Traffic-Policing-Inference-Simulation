@@ -26,6 +26,7 @@ SIM_FILE = 'sim'
 EXP_SHAPING = 'shaping'
 EXP_SHAPING_COMPLEX = 'complex-shaping'
 EXP_XTOPO = 'xtopo'
+EXP_RENO_ADDITION = 'reno'
 
 DATA = "data/"
 
@@ -120,18 +121,14 @@ def results_analysis(results):
 def save_results(results, exp_name, estimation=RateEstimationMethod.GOOGLE):
     df = pd.DataFrame(results)
     if exp_name == EXP_XTOPO:
-        print(df)
         for ratio_value, subset in df.groupby("traffic_ratio"):
             ratio_str = str(ratio_value)
-            if estimation == RateEstimationMethod.GOOGLE:
-                filename = f"{DATA}results_{exp_name}-{ratio_str}.csv"
-            else:
-                filename = f"{DATA}results_{exp_name}-{ratio_str}_{estimation}.csv"
+            filename = f"{DATA}results_{exp_name}-{ratio_str}_{estimation}.csv"
 
             subset.to_csv(filename, index=False)
             print(f"Results for trafficRatio={ratio_str} saved to {filename}")
     else:   
-        name = f"{DATA}results_{exp_name}.csv" if estimation == RateEstimationMethod.GOOGLE.name else f"{DATA}results_{exp_name}_{estimation}.csv"
+        name = f"{DATA}results_{exp_name}_{estimation}.csv"
         df.to_csv(name, index=False)
         print(f"Results saved to {name}")
 
@@ -167,6 +164,12 @@ if __name__ == "__main__":
         help="Command to run the simulation."
     )
     
+    parser.add_argument(
+        "--reno",
+        action="store_true",
+        help="Enable TCP NewReno in the simulation."
+    )
+    
     est_choices = RateEstimationMethod.__members__.keys()
     
     parser.add_argument(
@@ -176,14 +179,18 @@ if __name__ == "__main__":
         help="Calculate the estimated rate using tx gaps."
     )
     
+    
     args = parser.parse_args()
+    if args.reno:
+        args.command = f"{EXP_RENO_ADDITION}-{args.command}"
+        
     if not args.simple:
         experiment_analysis(args.command, args.estimation)
         exit(0)
     else: 
         runs = get_experiment_runs(args.command, args.estimation)
         query_q_size = "10000.0B" # input("Enter the queue size: ")
-        burst = '7500'
+        burst = '12000'
         
         for run in runs:
             if run.params[1] == query_q_size and run.params[0] == burst:
@@ -193,12 +200,6 @@ if __name__ == "__main__":
                 rx = run.get_client_rx_throughput()
                 print(f"Throughput at rx: {rx}")
                 print(f"Policing rate: {throughput}")
-                # print(f"Throughput at rx: {throughput}")
-                # num_lost = pcap_df[pcap_df['is_lost']== True].shape[0]
-                # print(f"Lost packets: {num_lost}")
-                # p_first, p_last = get_first_and_last_loss_index(pcap_df)
-                # rate = get_policing_rate(pcap_df, p_first, p_last)
-                # print(f"Policing rate: {rate}")
                 
     
 

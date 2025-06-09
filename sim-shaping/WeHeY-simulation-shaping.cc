@@ -86,11 +86,13 @@ static void CwndTracer(uint32_t oldCwnd, uint32_t newCwnd) {
 }
 
 static void RttTracer(Time oldRtt, Time newRtt) {
-  rttFile << Simulator::Now().GetSeconds() << "," << newRtt.GetSeconds() << std::endl;
+  rttFile << Simulator::Now().GetSeconds() << "," << newRtt.GetSeconds()
+          << std::endl;
 }
 
 static void RtoTracer(Time oldRto, Time newRto) {
-  rtoFile << Simulator::Now().GetSeconds() << "," << newRto.GetSeconds() << std::endl;
+  rtoFile << Simulator::Now().GetSeconds() << "," << newRto.GetSeconds()
+          << std::endl;
 }
 
 void ConnectCwndTrace(Ptr<BulkSendApplication> app) {
@@ -136,11 +138,14 @@ int main(int argc, char *argv[]) {
   DataRate rate = DataRate("2Mbps");
   DataRate peakRate = DataRate("0bps");
 
-
   Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(500000));
   Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(500000));
 
   std::string queueSize = "100p";
+
+  std::string sim_name_full = SIM_NAME;
+
+  uint32_t reno = 0;
 
   CommandLine cmd(__FILE__);
   cmd.AddValue("burst", "Size of first bucket in bytes", burst);
@@ -152,8 +157,17 @@ int main(int argc, char *argv[]) {
                "Amount of bytes or packets that can be stored in the bucket "
                "instead of dropping the packet. Queue size in bytes or packets",
                queueSize);
+  cmd.AddValue("reno",
+               "Set to use TCP Reno instead of Cubic (default is Cubic)", reno);
 
   cmd.Parse(argc, argv);
+
+  if (reno) {
+    Config::SetDefault("ns3::TcpL4Protocol::SocketType",
+                       TypeIdValue(TcpNewReno::GetTypeId()));
+    std::cout << "Using TCP Reno" << std::endl;
+    sim_name_full = "reno-" + SIM_NAME;
+  }
 
   NodeContainer nodes;
   nodes.Create(3);
@@ -268,12 +282,12 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
-  assignFiles(pointToPoint1, pointToPoint2, devices1.Get(0), devices2.Get(1), SIM_NAME, args);
+  assignFiles(pointToPoint1, pointToPoint2, devices1.Get(0), devices2.Get(1),
+              sim_name_full, args);
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 
-
-  getTracerFiles(SIM_NAME, args, cwndFile, rttFile, rtoFile);
+  getTracerFiles(sim_name_full, args, cwndFile, rttFile, rtoFile);
 
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
@@ -299,7 +313,7 @@ int main(int argc, char *argv[]) {
   std::cout << "IP-layer Rx Count (after queue disc):  " << g_ipRxCount
             << std::endl;
 
-  std::ofstream metadata(getMetadataFileName(SIM_NAME, args));
+  std::ofstream metadata(getMetadataFileName(sim_name_full, args));
   metadata << throughput << std::endl;  // Log throughput in bps
   metadata << sums.size() << std::endl; // Log number of dropped packets
   metadata.close();

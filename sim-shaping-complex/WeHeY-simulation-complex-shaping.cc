@@ -140,6 +140,10 @@ int main(int argc, char *argv[]) {
 
   std::string queueSize = "100p";
 
+  std::string sim_name_full = SIM_NAME;
+
+  uint32_t reno = 0;
+
   CommandLine cmd(__FILE__);
   cmd.AddValue("burst", "Size of first bucket in bytes", burst);
   cmd.AddValue("mtu", "Size of second bucket in bytes", mtu);
@@ -150,8 +154,17 @@ int main(int argc, char *argv[]) {
                "Amount of bytes or packets that can be stored in the bucket "
                "instead of dropping the packet. Queue size in bytes or packets",
                queueSize);
+  cmd.AddValue("reno",
+               "Set to use TCP Reno instead of Cubic (default is Cubic)", reno);
 
   cmd.Parse(argc, argv);
+
+  if (reno) {
+    Config::SetDefault("ns3::TcpL4Protocol::SocketType",
+                       TypeIdValue(TcpNewReno::GetTypeId()));
+    std::cout << "Using TCP Reno" << std::endl;
+    sim_name_full = "reno-" + SIM_NAME;
+  }
 
   NodeContainer nodes;
   nodes.Create(3);
@@ -223,7 +236,6 @@ int main(int argc, char *argv[]) {
   PacketSinkHelper packetSinkHelper("ns3::TcpSocketFactory", localAddress);
   ApplicationContainer sinkApp = packetSinkHelper.Install(nodes.Get(2));
 
-
   sinkApp.Start(Seconds(0.0));
   sinkApp.Stop(Seconds(simulationTime + 0.1));
 
@@ -241,22 +253,19 @@ int main(int argc, char *argv[]) {
   app->SetStartTime(Seconds(simStart));
   app->SetStopTime(Seconds(simEnd));
 
-
   Simulator::Schedule(
       Seconds(simStart + 1e-7), // a bit after StartApplication()
       MakeBoundCallback(&ConnectCwndTrace, app));
-
-
 
   std::vector<std::string> args;
   args.push_back(std::to_string(burst));
   args.push_back(queueSize);
   assignFiles(pointToPoint1, pointToPoint2, devices1.Get(0), devices2.Get(1),
-              SIM_NAME, args);
+              sim_name_full, args);
 
   Ptr<PacketSink> sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 
-  getTracerFiles(SIM_NAME, args, cwndFile, rttFile, rtoFile);
+  getTracerFiles(sim_name_full, args, cwndFile, rttFile, rtoFile);
   Simulator::Stop(Seconds(simulationTime + 5));
   Simulator::Run();
   Simulator::Destroy();
@@ -281,7 +290,7 @@ int main(int argc, char *argv[]) {
   std::cout << "IP-layer Rx Count (after queue disc):  " << g_ipRxCount
             << std::endl;
 
-  std::ofstream metadata(getMetadataFileName(SIM_NAME, args));
+  std::ofstream metadata(getMetadataFileName(sim_name_full, args));
   metadata << throughput << std::endl;  // Log throughput in bps
   metadata << sums.size() << std::endl; // Log number of dropped packets
   metadata.close();
