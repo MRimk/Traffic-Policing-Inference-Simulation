@@ -83,7 +83,10 @@ def get_experiment_runs(exp_name, estimation = RateEstimationMethod.GOOGLE) -> l
             continue
         ratio = 1.0
         if exp_name == EXP_XTOPO:
-            ratio = float(file_parts[2].split('-')[1])
+            name_parts = file_parts[2].split('-')
+            if (EXP_RENO_ADDITION not in EXP_XTOPO) and (EXP_RENO_ADDITION in name_parts):
+                continue
+            ratio = float(name_parts[1])
         file_parts = [part for part in file_parts if part]
         file_params = file_parts[3:]
         name = str.join('_',file_params)

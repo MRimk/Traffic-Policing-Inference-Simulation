@@ -70,7 +70,7 @@ def run_exp(command, reno = False):
     
     onePacket = 1500 # 1500B
     #TODO: run for presentation 3, 8 factors
-    # burstFactors = [0.5, 1, 5, 25, 100]
+    # burstFactors = [0.5, 1, 3, 5, 8, 25, 100]
     burstFactors = [1, 3, 8]
     # burstFactors = [5, 25, 100]
     # burstFactors = [100]
@@ -83,9 +83,9 @@ def run_exp(command, reno = False):
     
     #TODO: rerun everything with queueSize as multiples of 1500B 
       
-    # queueFactors = [packetSizeFactor]
+    queueFactors = [packetSizeFactor]
     # queueFactors = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 5, 10, 20, 25, 30, 35, 40, 50, 100]
-    queueFactors = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 5]
+    # queueFactors = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 5]
     queueSizes = []
     for factor in queueFactors:
         print(f"computed queue size: {factor * bdp}{queueAddition}")
@@ -93,8 +93,8 @@ def run_exp(command, reno = False):
     
     ratios = []
     if command == COM_YTOPO:
-        # ratios = [0.5, 1.0, 2.0]
-        ratios = [2.0]
+        ratios = [0.5, 1.0, 2.0]
+        # ratios = [2.0]
     else:
         ratios = [1.0]
     
